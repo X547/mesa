@@ -65,6 +65,11 @@
 #include <sys/sysmacros.h>
 #endif
 
+#ifdef __HAIKU__
+#define major(x) (0)
+#define minor(x) (x)
+#endif
+
 struct wsi_wayland;
 
 struct wsi_wl_format {

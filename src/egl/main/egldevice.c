@@ -311,7 +311,7 @@ _eglDeviceRefreshList(void)
    assert(_eglDeviceSupports(dev, _EGL_DEVICE_SOFTWARE));
    count++;
 
-#ifdef HAVE_LIBDRM
+#if defined(HAVE_LIBDRM) && !defined(__HAIKU__)
    drmDevicePtr devices[64];
    int num_devs, ret;
 

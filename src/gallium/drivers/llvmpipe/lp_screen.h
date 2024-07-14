@@ -79,7 +79,7 @@ struct llvmpipe_screen
    int udmabuf_fd;
 #endif
 
-#if DETECT_OS_LINUX
+#if DETECT_OS_LINUX || defined(__HAIKU__)
    int fd_mem_alloc;
    mtx_t mem_mutex;
    uint64_t mem_file_size;

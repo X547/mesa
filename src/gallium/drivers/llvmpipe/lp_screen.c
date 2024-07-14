@@ -930,7 +930,7 @@ llvmpipe_destroy_screen(struct pipe_screen *_screen)
    close(screen->udmabuf_fd);
 #endif
 
-#if DETECT_OS_LINUX
+#if DETECT_OS_LINUX || defined(__HAIKU__)
    util_vma_heap_finish(&screen->mem_heap);
 
    close(screen->fd_mem_alloc);
@@ -1181,7 +1181,7 @@ llvmpipe_create_screen(struct sw_winsys *winsys)
    if (!os_get_page_size(&alignment))
       alignment = 256;
 
-#if DETECT_OS_LINUX
+#if DETECT_OS_LINUX || defined(__HAIKU__)
    (void) mtx_init(&screen->mem_mutex, mtx_plain);
 
    util_vma_heap_init(&screen->mem_heap, alignment, UINT64_MAX - alignment);

@@ -322,7 +322,7 @@ llvmpipe_resource_create_all(struct pipe_screen *_screen,
             goto fail;
 
          if (templat->flags & PIPE_RESOURCE_FLAG_SPARSE) {
-#if DETECT_OS_LINUX
+#if DETECT_OS_LINUX || defined(__HAIKU__)
             lpr->tex_data = os_mmap(NULL, lpr->size_required, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_SHARED,
                                     -1, 0);
             madvise(lpr->tex_data, lpr->size_required, MADV_DONTNEED);
@@ -369,7 +369,7 @@ llvmpipe_resource_create_all(struct pipe_screen *_screen,
       if (templat->flags & PIPE_RESOURCE_FLAG_SPARSE) {
          os_get_page_size(&alignment);
          lpr->size_required = align64(lpr->size_required, alignment);
-#if DETECT_OS_LINUX
+#if DETECT_OS_LINUX || defined(__HAIKU__)
          lpr->data = os_mmap(NULL, lpr->size_required, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_SHARED,
                              -1, 0);
          madvise(lpr->data, lpr->size_required, MADV_DONTNEED);
@@ -572,7 +572,7 @@ llvmpipe_resource_destroy(struct pipe_screen *pscreen,
 #endif
 
    if (lpr->base.flags & PIPE_RESOURCE_FLAG_SPARSE) {
-#if DETECT_OS_LINUX
+#if DETECT_OS_LINUX || defined(__HAIKU__)
       if (llvmpipe_resource_is_texture(pt))
          munmap(lpr->tex_data, lpr->size_required);
       else
@@ -1297,7 +1297,7 @@ llvmpipe_allocate_memory(struct pipe_screen *_screen, uint64_t size)
 
    mem->size = align64(size, alignment);
 
-#if DETECT_OS_LINUX
+#if DETECT_OS_LINUX || defined(__HAIKU__)
    struct llvmpipe_screen *screen = llvmpipe_screen(_screen);
 
    mem->cpu_addr = MAP_FAILED;
@@ -1333,7 +1333,7 @@ llvmpipe_free_memory(struct pipe_screen *pscreen,
 {
    struct llvmpipe_memory_allocation *mem = (struct llvmpipe_memory_allocation *)pmem;
 
-#if DETECT_OS_LINUX
+#if DETECT_OS_LINUX || defined(__HAIKU__)
    struct llvmpipe_screen *screen = llvmpipe_screen(pscreen);
 
    if (mem->fd) {
@@ -1533,7 +1533,7 @@ llvmpipe_map_memory(struct pipe_screen *screen,
 {
    struct llvmpipe_memory_allocation *mem = (struct llvmpipe_memory_allocation *)pmem;
 
-#if DETECT_OS_LINUX
+#if DETECT_OS_LINUX || defined(__HAIKU__)
    if (mem->cpu_addr != MAP_FAILED)
       return mem->cpu_addr;
 
@@ -1569,7 +1569,7 @@ llvmpipe_resource_bind_backing(struct pipe_screen *pscreen,
       return false;
 
    if ((lpr->base.flags & PIPE_RESOURCE_FLAG_SPARSE) && offset < lpr->size_required) {
-#if DETECT_OS_LINUX
+#if DETECT_OS_LINUX || defined(__HAIKU__)
       struct llvmpipe_memory_allocation *mem = (struct llvmpipe_memory_allocation *)pmem;
       if (mem) {
          if (llvmpipe_resource_is_texture(&lpr->base)) {
