@@ -52,12 +52,9 @@ struct wl_egl_window;
 struct wl_event_queue;
 struct wl_callback;
 struct wl_display;
-struct wl_drm;
 struct wl_registry;
 struct wl_shm;
 struct wl_surface;
-struct zwp_linux_dmabuf_v1;
-struct zwp_linux_dmabuf_feedback_v1;
 #endif
 
 #include <GL/gl.h>
@@ -300,15 +297,9 @@ struct dri2_egl_display {
    struct wl_display *wl_dpy;
    struct wl_display *wl_dpy_wrapper;
    struct wl_registry *wl_registry;
-   struct wl_drm *wl_server_drm;
-   struct wl_drm *wl_drm;
-   uint32_t wl_drm_version, wl_drm_name;
    struct wl_shm *wl_shm;
    struct wl_event_queue *wl_queue;
-   struct zwp_linux_dmabuf_v1 *wl_dmabuf;
    struct dri2_wl_formats formats;
-   struct zwp_linux_dmabuf_feedback_v1 *wl_dmabuf_feedback;
-   struct dmabuf_feedback_format_table format_table;
    bool authenticated;
    uint32_t capabilities;
    char *device_name;
@@ -356,7 +347,6 @@ struct dri2_egl_surface {
    bool compositor_using_another_device;
    int format;
    bool resized;
-   bool received_dmabuf_feedback;
 #endif
 
 #ifdef HAVE_DRM_PLATFORM
