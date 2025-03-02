@@ -28,7 +28,27 @@
 #include "vk_shader_module.h"
 #include "vulkan/wsi/wsi_common.h"
 
+#ifndef __HAIKU__
 #include <sys/sysmacros.h>
+#endif
+
+#ifdef __HAIKU__
+static unsigned int major(dev_t dev)
+{
+	unsigned int __major;
+	__major  = ((dev & (dev_t) 0x00000000000fff00u) >>  8);
+	__major |= ((dev & (dev_t) 0xfffff00000000000u) >> 32);
+	return __major;
+}
+
+static unsigned int minor(dev_t dev)
+{
+	unsigned int __minor;
+	__minor  = ((dev & (dev_t) 0x00000000000000ffu) >>  0);
+	__minor |= ((dev & (dev_t) 0x00000ffffff00000u) >> 12);
+	return __minor;
+}
+#endif
 
 #include "nv_push.h"
 #include "cl90c0.h"

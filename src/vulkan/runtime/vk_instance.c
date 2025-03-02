@@ -42,6 +42,10 @@
 #include "dlfcn.h"
 #endif
 
+#ifdef __HAIKU__
+#define RTLD_NOLOAD 0
+#endif
+
 #define VERSION_IS_1_0(version) \
    (VK_API_VERSION_MAJOR(version) == 1 && VK_API_VERSION_MINOR(version) == 0)
 

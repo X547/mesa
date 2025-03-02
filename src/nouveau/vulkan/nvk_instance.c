@@ -164,6 +164,7 @@ nvk_CreateInstance(const VkInstanceCreateInfo *pCreateInfo,
       nvk_create_drm_physical_device;
    instance->vk.physical_devices.destroy = nvk_physical_device_destroy;
 
+#ifndef __HAIKU__
    const struct build_id_note *note =
       build_id_find_nhdr_for_addr(nvk_CreateInstance);
    if (!note) {
@@ -181,6 +182,7 @@ nvk_CreateInstance(const VkInstanceCreateInfo *pCreateInfo,
 
    STATIC_ASSERT(sizeof(instance->driver_build_sha) == SHA1_DIGEST_LENGTH);
    memcpy(instance->driver_build_sha, build_id_data(note), SHA1_DIGEST_LENGTH);
+#endif
 
    *pInstance = nvk_instance_to_handle(instance);
    return VK_SUCCESS;
