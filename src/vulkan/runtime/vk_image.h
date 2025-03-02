@@ -75,7 +75,7 @@ struct vk_image {
    /* wsi_image_create_info::scanout */
    bool wsi_legacy_scanout;
 
-#if DETECT_OS_LINUX || DETECT_OS_BSD
+#if DETECT_OS_LINUX || DETECT_OS_BSD || DETECT_OS_HAIKU
    /* VK_EXT_drm_format_modifier
     *
     * Initialized by vk_image_create/init() to DRM_FORMAT_MOD_INVALID.  It's

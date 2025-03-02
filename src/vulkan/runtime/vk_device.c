@@ -36,6 +36,7 @@
 #include "util/perf/cpu_trace.h"
 #include "util/ralloc.h"
 #include "util/timespec.h"
+#include "util/compiler.h"
 
 static enum vk_device_timeline_mode
 get_timeline_mode(struct vk_physical_device *physical_device)
