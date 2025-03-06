@@ -39,6 +39,14 @@ VkResult nvkmd_nvrm_create_dev(struct nvkmd_pdev *pdev,
                                   struct vk_object_base *log_obj,
                                   struct nvkmd_dev **dev_out);
 
+
+VkResult
+nvkmd_nvrm_enum_pdev(struct vk_object_base *log_obj,
+                     enum nvk_debug debug_flags,
+                     nvkmd_enum_pdev_visitor visitor,
+                     void *arg);
+
+
 struct nvkmd_nvrm_mem {
    struct nvkmd_mem base;
 };

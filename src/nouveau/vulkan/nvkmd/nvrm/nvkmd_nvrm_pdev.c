@@ -11,11 +11,11 @@
 
 #include <string.h>
 
-VkResult
-nvkmd_nvrm_try_create_pdev(struct _drmDevice *drm_device,
-                              struct vk_object_base *log_obj,
-                              enum nvk_debug debug_flags,
-                              struct nvkmd_pdev **pdev_out)
+
+static VkResult
+nvkmd_nvrm_create_pdev(struct vk_object_base *log_obj,
+                       enum nvk_debug debug_flags,
+                       struct nvkmd_pdev **pdev_out)
 {
    struct nvkmd_nvrm_pdev *pdev = CALLOC_STRUCT(nvkmd_nvrm_pdev);
    if (pdev == NULL) {
@@ -34,6 +34,27 @@ nvkmd_nvrm_try_create_pdev(struct _drmDevice *drm_device,
    pdev->base.bind_align_B = os_page_size;
 
    *pdev_out = &pdev->base;
+
+   return VK_SUCCESS;
+}
+
+VkResult
+nvkmd_nvrm_enum_pdev(struct vk_object_base *log_obj,
+                     enum nvk_debug debug_flags,
+                     nvkmd_enum_pdev_visitor visitor,
+                     void *arg)
+{
+   struct nvkmd_pdev *pdev = NULL;
+   VkResult result;
+   result = nvkmd_nvrm_create_pdev(log_obj, debug_flags, &pdev);
+   if (result != VK_SUCCESS)
+      return result;
+
+   result = visitor(pdev, arg);
+   if (result != VK_SUCCESS) {
+      nvkmd_pdev_destroy(pdev);
+      return result;
+   }
 
    return VK_SUCCESS;
 }

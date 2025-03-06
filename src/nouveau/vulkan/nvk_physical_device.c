@@ -1305,19 +1305,12 @@ nvk_get_vram_heap_available(struct nvk_physical_device *pdev)
    return pdev->info.vram_size_B - used;
 }
 
-VkResult
-nvk_create_drm_physical_device(struct vk_instance *_instance,
-                               struct _drmDevice *drm_device,
-                               struct vk_physical_device **pdev_out)
+static VkResult
+nvk_create_physical_device(struct nvkmd_pdev *nvkmd,
+                           void *arg)
 {
-   struct nvk_instance *instance = (struct nvk_instance *)_instance;
+   struct nvk_instance *instance = (struct nvk_instance *)arg;
    VkResult result;
-
-   struct nvkmd_pdev *nvkmd;
-   result = nvkmd_try_create_pdev_for_drm(drm_device, &instance->vk.base,
-                                          instance->debug_flags, &nvkmd);
-   if (result != VK_SUCCESS)
-      return result;
 
    /* We don't support anything pre-Kepler */
    if (nvkmd->dev_info.cls_eng3d < KEPLER_A) {
@@ -1488,7 +1481,7 @@ nvk_create_drm_physical_device(struct vk_instance *_instance,
       goto fail_disk_cache;
 #endif
 
-   *pdev_out = &pdev->vk;
+   list_addtail(&pdev->vk.link, &instance->vk.physical_devices.list);
 
    return VK_SUCCESS;
 
@@ -1502,6 +1495,13 @@ fail_alloc:
 fail_nvkmd:
    nvkmd_pdev_destroy(nvkmd);
    return result;
+}
+
+VkResult
+nvk_enumarate_physical_devices(struct vk_instance *_instance)
+{
+   struct nvk_instance *instance = (struct nvk_instance *)_instance;
+   return nvkmd_enum_pdev(&instance->vk.base, instance->debug_flags, nvk_create_physical_device, instance);
 }
 
 void

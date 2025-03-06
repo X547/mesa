@@ -80,9 +80,7 @@ nvk_physical_device_instance(const struct nvk_physical_device *pdev)
    return (struct nvk_instance *)pdev->vk.instance;
 }
 
-VkResult nvk_create_drm_physical_device(struct vk_instance *vk_instance,
-                                        struct _drmDevice *drm_device,
-                                        struct vk_physical_device **pdev_out);
+VkResult nvk_enumarate_physical_devices(struct vk_instance *instance);
 
 void nvk_physical_device_destroy(struct vk_physical_device *vk_device);
 
