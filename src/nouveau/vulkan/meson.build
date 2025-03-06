@@ -79,6 +79,7 @@ nvk_files = files(
   'nvkmd/nvrm/nvkmd_nvrm_mem.c',
   'nvkmd/nvrm/nvkmd_nvrm_pdev.c',
   'nvkmd/nvrm/nvkmd_nvrm_va.c',
+  'nvkmd/nvrm/nvkmd_nvrm_sync.c',
   'nvkmd/nvkmd.c',
   'nvkmd/nvkmd.h',
 )

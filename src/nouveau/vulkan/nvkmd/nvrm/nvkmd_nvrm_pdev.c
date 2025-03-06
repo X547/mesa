@@ -24,6 +24,33 @@ nvkmd_nvrm_create_pdev(struct vk_object_base *log_obj,
 
    pdev->base.ops = &nvkmd_nvrm_pdev_ops;
    pdev->base.debug_flags = debug_flags;
+   
+   pdev->base.dev_info = (struct nv_device_info) {
+    .type = NV_DEVICE_TYPE_DIS,
+    .device_id = 8178,
+    .chipset = 359,
+    .device_name = "NVIDIA T400 4GB",
+    .chipset_name = "TU117",
+    .pci = {
+        .domain = 0,
+        .bus = 1,
+        .dev = 0,
+        .func = 0,
+        .revision_id = 255
+    },
+    .sm = 75,
+    .gpc_count = 1,
+    .tpc_count = 3,
+    .mp_per_tpc = 2,
+    .max_warps_per_mp = 32,
+    .cls_copy = 0xc5b5,
+    .cls_eng2d = 0x902d,
+    .cls_eng3d = 0xc597,
+    .cls_m2mf = 0xa140,
+    .cls_compute = 0xc5c0,
+    .vram_size_B = 0x100000000, // 4GB
+    .bar_size_B = 0x10000000 // 256 MB
+   };
 
    /* Nouveau uses the OS page size for all pages, regardless of whether they
     * come from VRAM or system RAM.
@@ -32,6 +59,11 @@ nvkmd_nvrm_create_pdev(struct vk_object_base *log_obj,
    os_get_page_size(&os_page_size);
    assert(os_page_size <= UINT32_MAX);
    pdev->base.bind_align_B = os_page_size;
+
+   pdev->syncobj_sync_type = nvkmd_nvrm_sync_get_type(pdev);
+   pdev->sync_types[0] = &pdev->syncobj_sync_type;
+   pdev->sync_types[1] = NULL;
+   pdev->base.sync_types = pdev->sync_types;
 
    *pdev_out = &pdev->base;
 
@@ -52,7 +84,6 @@ nvkmd_nvrm_enum_pdev(struct vk_object_base *log_obj,
 
    result = visitor(pdev, arg);
    if (result != VK_SUCCESS) {
-      nvkmd_pdev_destroy(pdev);
       return result;
    }
 
