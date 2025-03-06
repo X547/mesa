@@ -5,6 +5,7 @@
 
 #include "nak_private.h"
 
+#ifdef HAVE_LIBDRM
 #include "nouveau_bo.h"
 #include "nouveau_context.h"
 #include "nouveau_device.h"
@@ -18,3 +19,4 @@
 enum ENUM_PACKED drm_rs_ioctls {
    DRM_RS_IOCTL(NOUVEAU_EXEC),
 };
+#endif

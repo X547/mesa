@@ -4,7 +4,7 @@
  */
 
 #include "nvkmd.h"
-#include "nouveau/nvkmd_nouveau.h"
+#include "nvrm/nvkmd_nvrm.h"
 
 #include <inttypes.h>
 
@@ -83,13 +83,12 @@ nvkmd_mem_init(struct nvkmd_dev *dev,
 }
 
 VkResult
-nvkmd_try_create_pdev_for_drm(struct _drmDevice *drm_device,
-                              struct vk_object_base *log_obj,
-                              enum nvk_debug debug_flags,
-                              struct nvkmd_pdev **pdev_out)
+nvkmd_enum_pdev(struct vk_object_base *log_obj,
+                enum nvk_debug debug_flags,
+                nvkmd_enum_pdev_visitor visitor,
+                void *arg)
 {
-   return nvkmd_nouveau_try_create_pdev(drm_device, log_obj,
-                                        debug_flags, pdev_out);
+   return nvkmd_nvrm_enum_pdev(log_obj, debug_flags, visitor, arg);
 }
 
 VkResult

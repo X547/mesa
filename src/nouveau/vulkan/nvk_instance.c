@@ -160,8 +160,7 @@ nvk_CreateInstance(const VkInstanceCreateInfo *pCreateInfo,
    nvk_init_debug_flags(instance);
    nvk_init_dri_options(instance);
 
-   instance->vk.physical_devices.try_create_for_drm =
-      nvk_create_drm_physical_device;
+   instance->vk.physical_devices.enumerate = nvk_enumarate_physical_devices;
    instance->vk.physical_devices.destroy = nvk_physical_device_destroy;
 
 #ifndef __HAIKU__

@@ -1,9 +1,11 @@
 # Copyright © 2021 Ilia Mirkin
 # SPDX-License-Identifier: MIT
 
-subdir('drm')
+inc_nouveau_winsys=include_directories('winsys')
+
+#subdir('drm')
 subdir('headers')
-subdir('winsys')
+#subdir('winsys')
 if with_nouveau_vk
   subdir('rust')
   subdir('nil')

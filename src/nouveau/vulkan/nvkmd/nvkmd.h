@@ -361,6 +361,8 @@ struct nvkmd_ctx {
       return container_of(nvkmd, struct nvkmd_##subcls##_##strct, base);   \
    }
 
+typedef VkResult (*nvkmd_enum_pdev_visitor)(struct nvkmd_pdev *pdev, void *arg);
+
 /*
  * Methods
  *
@@ -369,10 +371,10 @@ struct nvkmd_ctx {
  */
 
 VkResult MUST_CHECK
-nvkmd_try_create_pdev_for_drm(struct _drmDevice *drm_device,
-                              struct vk_object_base *log_obj,
-                              enum nvk_debug debug_flags,
-                              struct nvkmd_pdev **pdev_out);
+nvkmd_enum_pdev(struct vk_object_base *log_obj,
+                enum nvk_debug debug_flags,
+                nvkmd_enum_pdev_visitor visitor,
+                void *arg);
 
 static inline void
 nvkmd_pdev_destroy(struct nvkmd_pdev *pdev)

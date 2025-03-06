@@ -76,7 +76,7 @@ _nak_bindings_rs = rust.bindgen(
   ],
   dependencies : [
     dep_libdrm,
-    idep_nouveau_ws,
+#   idep_nouveau_ws,
     libnak_deps,
   ],
 )
