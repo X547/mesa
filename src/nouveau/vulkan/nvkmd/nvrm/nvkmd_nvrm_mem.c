@@ -9,6 +9,54 @@
 
 #include "util/u_memory.h"
 
+static VkResult
+create_mem_or_close_bo(struct nvkmd_nvrm_dev *dev,
+                       struct vk_object_base *log_obj,
+                       enum nvkmd_mem_flags mem_flags,
+                       void *bo, uint64_t size_B,
+                       enum nvkmd_va_flags va_flags,
+                       uint8_t pte_kind, uint64_t va_align_B,
+                       struct nvkmd_mem **mem_out)
+{
+   VkResult result;
+
+   struct nvkmd_nvrm_mem *mem = CALLOC_STRUCT(nvkmd_nvrm_mem);
+   if (mem == NULL) {
+      result = vk_error(log_obj, VK_ERROR_OUT_OF_HOST_MEMORY);
+      goto fail_bo;
+   }
+
+   nvkmd_mem_init(&dev->base, &mem->base, &nvkmd_nvrm_mem_ops,
+                  mem_flags, size_B, dev->base.pdev->bind_align_B);
+   mem->bo = bo;
+
+   result = nvkmd_dev_alloc_va(&dev->base, log_obj,
+                               va_flags, pte_kind,
+                               size_B, va_align_B,
+                               0 /* fixed_addr */,
+                               &mem->base.va);
+   if (result != VK_SUCCESS)
+      goto fail_mem;
+
+   result = nvkmd_va_bind_mem(mem->base.va, log_obj, 0 /* va_offset_B */,
+                              &mem->base, 0 /* mem_offset_B */, size_B);
+   if (result != VK_SUCCESS)
+      goto fail_va;
+
+   *mem_out = &mem->base;
+
+   return VK_SUCCESS;
+
+fail_va:
+   nvkmd_va_free(mem->base.va);
+fail_mem:
+   FREE(mem);
+fail_bo:
+// nvrm_ws_bo_destroy(bo);
+
+   return result;
+}
+
 VkResult
 nvkmd_nvrm_alloc_mem(struct nvkmd_dev *dev,
                         struct vk_object_base *log_obj,
@@ -29,21 +77,19 @@ nvkmd_nvrm_alloc_tiled_mem(struct nvkmd_dev *_dev,
                               enum nvkmd_mem_flags flags,
                               struct nvkmd_mem **mem_out)
 {
-   VkResult result;
+   struct nvkmd_nvrm_dev *dev = nvkmd_nvrm_dev(_dev);
 
-   struct nvkmd_nvrm_mem *mem = CALLOC_STRUCT(nvkmd_nvrm_mem);
-   if (mem == NULL) {
-      result = vk_error(log_obj, VK_ERROR_OUT_OF_HOST_MEMORY);
-      goto fail_bo;
-   }
+   const uint32_t mem_align_B = _dev->pdev->bind_align_B;
+   size_B = align64(size_B, mem_align_B);
 
-   *mem_out = &mem->base;
+   assert(util_is_power_of_two_or_zero64(align_B));
+   const uint64_t va_align_B = MAX2(mem_align_B, align_B);
 
-   return VK_SUCCESS;
+   enum nvkmd_va_flags va_flags = NVKMD_VA_GART;
 
-fail_bo:
-
-   return result;
+   return create_mem_or_close_bo(dev, log_obj, flags, NULL, size_B,
+                                 va_flags, pte_kind, va_align_B,
+                                 mem_out);
 }
 
 VkResult
@@ -51,21 +97,7 @@ nvkmd_nvrm_import_dma_buf(struct nvkmd_dev *_dev,
                              struct vk_object_base *log_obj,
                              int fd, struct nvkmd_mem **mem_out)
 {
-   VkResult result;
-
-   struct nvkmd_nvrm_mem *mem = CALLOC_STRUCT(nvkmd_nvrm_mem);
-   if (mem == NULL) {
-      result = vk_error(log_obj, VK_ERROR_OUT_OF_HOST_MEMORY);
-      goto fail_bo;
-   }
-
-   *mem_out = &mem->base;
-
-   return VK_SUCCESS;
-
-fail_bo:
-
-   return result;
+   return vk_errorf(log_obj, VK_ERROR_UNKNOWN, "nvkmd_nvrm_import_dma_buf: not implemented");
 }
 
 static void
@@ -87,6 +119,8 @@ nvkmd_nvrm_mem_map(struct nvkmd_mem *_mem,
    struct nvkmd_nvrm_mem *mem = nvkmd_nvrm_mem(_mem);
    struct nvkmd_nvrm_dev *dev = nvkmd_nvrm_dev(_mem->dev);
 
+   *map_out = calloc(1, mem->base.size_B);
+
    return VK_SUCCESS;
 }
 
@@ -96,6 +130,7 @@ nvkmd_nvrm_mem_unmap(struct nvkmd_mem *_mem,
                         void *map)
 {
    struct nvkmd_nvrm_mem *mem = nvkmd_nvrm_mem(_mem);
+   free(map);
 }
 
 static VkResult

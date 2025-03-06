@@ -7,6 +7,7 @@
 
 #include "nvkmd/nvkmd.h"
 #include "util/vma.h"
+#include "vk_sync.h"
 
 #include <sys/types.h>
 
@@ -16,6 +17,9 @@ struct nvrm_ws_device;
 
 struct nvkmd_nvrm_pdev {
    struct nvkmd_pdev base;
+
+   struct vk_sync_type syncobj_sync_type;
+   const struct vk_sync_type *sync_types[2];
 };
 
 NVKMD_DECL_SUBCLASS(pdev, nvrm);
@@ -49,6 +53,7 @@ nvkmd_nvrm_enum_pdev(struct vk_object_base *log_obj,
 
 struct nvkmd_nvrm_mem {
    struct nvkmd_mem base;
+   void *bo;
 };
 
 NVKMD_DECL_SUBCLASS(mem, nvrm);
@@ -98,5 +103,31 @@ VkResult nvkmd_nvrm_create_ctx(struct nvkmd_dev *dev,
                                   struct vk_object_base *log_obj,
                                   enum nvkmd_engines engines,
                                   struct nvkmd_ctx **ctx_out);
+
+struct nvkmd_nvrm_sync {
+   struct vk_sync base;
+};
+
+void
+nvkmd_nvrm_sync_finish(struct vk_device *device,
+                       struct vk_sync *sync);
+
+static inline bool
+vk_sync_type_is_nvkmd_nvrm_sync(const struct vk_sync_type *type)
+{
+   return type->finish == nvkmd_nvrm_sync_finish;
+}
+
+static inline struct nvkmd_nvrm_sync *
+vk_sync_as_nvkmd_nvrm_sync(struct vk_sync *sync)
+{
+   if (!vk_sync_type_is_nvkmd_nvrm_sync(sync->type))
+      return NULL;
+
+   return container_of(sync, struct nvkmd_nvrm_sync, base);
+}
+
+struct vk_sync_type
+nvkmd_nvrm_sync_get_type(struct nvkmd_nvrm_pdev *pdev);
 
 #endif /* NVKMD_DRM_H */

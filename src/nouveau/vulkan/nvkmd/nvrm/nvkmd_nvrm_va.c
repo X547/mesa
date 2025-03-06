@@ -65,7 +65,7 @@ nvkmd_nvrm_va_bind_mem(struct nvkmd_va *_va,
    struct nvkmd_nvrm_dev *dev = nvkmd_nvrm_dev(_va->dev);
    struct nvkmd_nvrm_va *va = nvkmd_nvrm_va(_va);
    struct nvkmd_nvrm_mem *mem = nvkmd_nvrm_mem(_mem);
-
+   
    return VK_SUCCESS;
 }
 
