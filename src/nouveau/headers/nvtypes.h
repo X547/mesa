@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-typedef bool NvBool;
+typedef uint8_t NvBool;
 
 typedef uint8_t NvV8;
 typedef uint16_t NvV16;

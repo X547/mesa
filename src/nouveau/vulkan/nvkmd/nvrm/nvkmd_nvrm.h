@@ -11,6 +11,11 @@
 
 #include <sys/types.h>
 
+#include "nvRmApi.h"
+
+#include "nvtypes.h"
+#include "ctrl/ctrl2080/ctrl2080fb.h" // NV2080_CTRL_CMD_FB_GET_SEMAPHORE_SURFACE_LAYOUT
+
 struct nvrm_ws_bo;
 struct nvrm_ws_context;
 struct nvrm_ws_device;
@@ -31,10 +36,16 @@ VkResult nvkmd_nvrm_try_create_pdev(struct _drmDevice *drm_device,
 
 struct nvkmd_nvrm_dev {
    struct nvkmd_dev base;
-
-   simple_mtx_t heap_mutex;
-   struct util_vma_heap heap;
-   struct util_vma_heap replay_heap;
+   char *devName;
+   int ctlFd;
+   int devFd;
+   NvHandle hClient;
+   NvHandle hDevice;
+   NvHandle hSubdevice;
+   NvHandle hUsermode;
+   struct NvRmApiMapping usermodeMap;
+   NvHandle hVaSpace;
+   struct NV2080_CTRL_FB_GET_SEMAPHORE_SURFACE_LAYOUT_PARAMS semSurfLayout;
 };
 
 NVKMD_DECL_SUBCLASS(dev, nvrm);
@@ -53,7 +64,8 @@ nvkmd_nvrm_enum_pdev(struct vk_object_base *log_obj,
 
 struct nvkmd_nvrm_mem {
    struct nvkmd_mem base;
-   void *bo;
+   NvHandle hMemoryPhys;
+   bool isSystemMem;
 };
 
 NVKMD_DECL_SUBCLASS(mem, nvrm);
@@ -77,6 +89,8 @@ VkResult nvkmd_nvrm_import_dma_buf(struct nvkmd_dev *dev,
 
 struct nvkmd_nvrm_va {
    struct nvkmd_va base;
+   NvHandle hMemoryPhys;
+   NvHandle hMemoryVirt;
 };
 
 NVKMD_DECL_SUBCLASS(va, nvrm);
@@ -89,6 +103,16 @@ VkResult nvkmd_nvrm_alloc_va(struct nvkmd_dev *dev,
 
 struct nvkmd_nvrm_exec_ctx {
    struct nvkmd_ctx base;
+   struct nvkmd_mem *notifier;
+   struct nvkmd_mem *userD;
+   struct nvkmd_mem *gpFifo;
+   struct nvkmd_mem *cmdBuf;
+   struct nvkmd_mem *data;
+   NvHandle hCtxDma;
+   NvHandle hChannel;
+   int osEvent;
+   struct NvRmSemSurf *semSurf;
+   uint64_t wSeq;
 };
 
 NVKMD_DECL_SUBCLASS(ctx, nvrm_exec);
@@ -129,5 +153,22 @@ vk_sync_as_nvkmd_nvrm_sync(struct vk_sync *sync)
 
 struct vk_sync_type
 nvkmd_nvrm_sync_get_type(struct nvkmd_nvrm_pdev *pdev);
+
+
+static inline void
+nvkmd_nvrm_dev_api_dev(struct nvkmd_nvrm_dev *dev, struct NvRmApi *rm)
+{
+   rm->fd = dev->devFd;
+   rm->hClient = dev->hClient;
+   rm->nodeName = dev->devName;
+}
+
+static inline void
+nvkmd_nvrm_dev_api_ctl(struct nvkmd_nvrm_dev *dev, struct NvRmApi *rm)
+{
+   rm->fd = dev->ctlFd;
+   rm->hClient = dev->hClient;
+   rm->nodeName = "/dev/nvidiactl";
+}
 
 #endif /* NVKMD_DRM_H */
