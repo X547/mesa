@@ -9,15 +9,22 @@
 
 #include "util/u_memory.h"
 
+#include "class/cl003e.h" // NV01_MEMORY_SYSTEM
+#include "class/cl0040.h" // NV01_MEMORY_LOCAL_USER
+
+
 static VkResult
 create_mem_or_close_bo(struct nvkmd_nvrm_dev *dev,
                        struct vk_object_base *log_obj,
                        enum nvkmd_mem_flags mem_flags,
-                       void *bo, uint64_t size_B,
+                       NvHandle hMemoryPhys, uint64_t size_B,
                        enum nvkmd_va_flags va_flags,
                        uint8_t pte_kind, uint64_t va_align_B,
                        struct nvkmd_mem **mem_out)
 {
+   struct NvRmApi rm;
+   nvkmd_nvrm_dev_api_dev(dev, &rm);
+
    VkResult result;
 
    struct nvkmd_nvrm_mem *mem = CALLOC_STRUCT(nvkmd_nvrm_mem);
@@ -28,7 +35,7 @@ create_mem_or_close_bo(struct nvkmd_nvrm_dev *dev,
 
    nvkmd_mem_init(&dev->base, &mem->base, &nvkmd_nvrm_mem_ops,
                   mem_flags, size_B, dev->base.pdev->bind_align_B);
-   mem->bo = bo;
+   mem->hMemoryPhys = hMemoryPhys;
 
    result = nvkmd_dev_alloc_va(&dev->base, log_obj,
                                va_flags, pte_kind,
@@ -52,7 +59,7 @@ fail_va:
 fail_mem:
    FREE(mem);
 fail_bo:
-// nvrm_ws_bo_destroy(bo);
+   nvRmApiFree(&rm, hMemoryPhys);
 
    return result;
 }
@@ -79,6 +86,9 @@ nvkmd_nvrm_alloc_tiled_mem(struct nvkmd_dev *_dev,
 {
    struct nvkmd_nvrm_dev *dev = nvkmd_nvrm_dev(_dev);
 
+   struct NvRmApi rm;
+   nvkmd_nvrm_dev_api_dev(dev, &rm);
+
    const uint32_t mem_align_B = _dev->pdev->bind_align_B;
    size_B = align64(size_B, mem_align_B);
 
@@ -87,7 +97,35 @@ nvkmd_nvrm_alloc_tiled_mem(struct nvkmd_dev *_dev,
 
    enum nvkmd_va_flags va_flags = NVKMD_VA_GART;
 
-   return create_mem_or_close_bo(dev, log_obj, flags, NULL, size_B,
+	bool isSystemMem = (flags & NVKMD_MEM_GART) != 0;
+	const NvU32 hClass = !isSystemMem ?
+		NV01_MEMORY_LOCAL_USER :
+		NV01_MEMORY_SYSTEM;
+
+	NV_MEMORY_ALLOCATION_PARAMS params = {
+		.owner = dev->hClient,
+		.type = NVOS32_TYPE_IMAGE,
+		.flags = NVOS32_ALLOC_FLAGS_ALIGNMENT_FORCE,
+		.attr = DRF_DEF(OS32, _ATTR, _PAGE_SIZE, _4KB),
+		.size = size_B,
+		.alignment = align_B,
+	};
+	if (isSystemMem) {
+		params.attr |= DRF_DEF(OS32, _ATTR, _LOCATION, _PCI);
+		params.attr |= DRF_DEF(OS32, _ATTR, _COHERENCY, _CACHED);
+		params.flags |= DRF_DEF(OS46, _FLAGS, _CACHE_SNOOP, _ENABLE);
+	} else {
+		params.attr |= DRF_DEF(OS32, _ATTR, _LOCATION, _VIDMEM);
+		params.attr |= DRF_DEF(OS32, _ATTR, _COHERENCY, _UNCACHED);
+		params.flags |= NVOS32_ALLOC_FLAGS_PERSISTENT_VIDMEM;
+	}
+
+	NvHandle hMemoryPhys = 0;
+   NV_STATUS nvRes = nvRmApiAlloc(&rm, dev->hDevice, &hMemoryPhys, hClass, &params);
+   if (nvRes != NV_OK)
+      return VK_ERROR_UNKNOWN;
+
+   return create_mem_or_close_bo(dev, log_obj, flags, hMemoryPhys, size_B,
                                  va_flags, pte_kind, va_align_B,
                                  mem_out);
 }
@@ -105,7 +143,11 @@ nvkmd_nvrm_mem_free(struct nvkmd_mem *_mem)
 {
    struct nvkmd_nvrm_mem *mem = nvkmd_nvrm_mem(_mem);
 
+   struct NvRmApi rm;
+   nvkmd_nvrm_dev_api_dev(nvkmd_nvrm_dev(mem->base.dev), &rm);
+
    nvkmd_va_free(mem->base.va);
+   nvRmApiFree(&rm, mem->hMemoryPhys);
    FREE(mem);
 }
 
@@ -119,8 +161,20 @@ nvkmd_nvrm_mem_map(struct nvkmd_mem *_mem,
    struct nvkmd_nvrm_mem *mem = nvkmd_nvrm_mem(_mem);
    struct nvkmd_nvrm_dev *dev = nvkmd_nvrm_dev(_mem->dev);
 
-   *map_out = calloc(1, mem->base.size_B);
+   struct NvRmApi rm;
+   if (mem->isSystemMem) {
+      nvkmd_nvrm_dev_api_ctl(dev, &rm);
+   } else {
+      nvkmd_nvrm_dev_api_dev(dev, &rm);
+   }
 
+   NvRmApiMapping mapping;
+   memset(&mapping, 0, sizeof(mapping));
+   NV_STATUS nvRes = nvRmApiMapMemory(&rm, dev->hSubdevice, mem->hMemoryPhys, 0, mem->base.size_B, 0, &mapping);
+   if (nvRes != NV_OK)
+      return VK_ERROR_UNKNOWN;
+
+   *map_out = mapping.address;
    return VK_SUCCESS;
 }
 
@@ -130,6 +184,27 @@ nvkmd_nvrm_mem_unmap(struct nvkmd_mem *_mem,
                         void *map)
 {
    struct nvkmd_nvrm_mem *mem = nvkmd_nvrm_mem(_mem);
+   struct nvkmd_nvrm_dev *dev = nvkmd_nvrm_dev(_mem->dev);
+
+   struct NvRmApi rm;
+   if (mem->isSystemMem) {
+      nvkmd_nvrm_dev_api_ctl(dev, &rm);
+   } else {
+      nvkmd_nvrm_dev_api_dev(dev, &rm);
+   }
+
+   NvRmApiMapping mapping;
+   mapping.stubLinearAddress = (void*)(uintptr_t)(-1);
+   mapping.address = map;
+#ifdef __HAIKU__
+   mapping.area = area_for(map);
+   if (mapping.area < 0)
+      abort();
+#else
+   mapping.size = mem->base.size_B;
+#endif
+   nvRmApiUnmapMemory(&rm, dev->hSubdevice, mem->hMemoryPhys, 0, &mapping);
+
    free(map);
 }
 
@@ -141,7 +216,7 @@ nvkmd_nvrm_mem_overmap(struct nvkmd_mem *_mem,
 {
    struct nvkmd_nvrm_mem *mem = nvkmd_nvrm_mem(_mem);
 
-   return VK_SUCCESS;
+   return VK_ERROR_UNKNOWN;
 }
 
 static VkResult
@@ -151,7 +226,7 @@ nvkmd_nvrm_mem_export_dma_buf(struct nvkmd_mem *_mem,
 {
    struct nvkmd_nvrm_mem *mem = nvkmd_nvrm_mem(_mem);
 
-   return VK_SUCCESS;
+   return VK_ERROR_UNKNOWN;
 }
 
 static uint32_t
