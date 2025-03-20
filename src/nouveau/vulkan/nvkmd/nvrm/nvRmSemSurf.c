@@ -48,14 +48,14 @@ portAtomicExAddU64
 NV_STATUS nvRmSemSurfCreate(struct nvkmd_nvrm_dev *dev, NvU64 size, struct NvRmSemSurf **semSurfOut)
 {
    struct NvRmApi rm;
-   nvkmd_nvrm_dev_api_dev(dev, &rm);
+   nvkmd_nvrm_dev_api_ctl(dev, &rm);
 
    struct NvRmSemSurf *semSurf = CALLOC_STRUCT(NvRmSemSurf);
    if (semSurf == NULL)
       return NV_ERR_NO_MEMORY;
 
    semSurf->dev = dev;
-   VkResult vkRes = nvkmd_dev_alloc_mem(&dev->base, NULL, size, 4096, NVKMD_MEM_GART | NVKMD_MEM_CAN_MAP, &semSurf->memory);
+   VkResult vkRes = nvkmd_dev_alloc_mapped_mem(&dev->base, NULL, size, 4096, NVKMD_MEM_GART, NVKMD_MEM_MAP_RDWR, &semSurf->memory);
    if (vkRes != VK_SUCCESS) {
       nvRmSemSurfDestroy(semSurf);
       return NV_ERR_GENERIC;
@@ -79,7 +79,7 @@ NV_STATUS nvRmSemSurfCreate(struct nvkmd_nvrm_dev *dev, NvU64 size, struct NvRmS
 void nvRmSemSurfDestroy(struct NvRmSemSurf *semSurf)
 {
    struct NvRmApi rm;
-   nvkmd_nvrm_dev_api_dev(semSurf->dev, &rm);
+   nvkmd_nvrm_dev_api_ctl(semSurf->dev, &rm);
    nvRmApiFree(&rm, semSurf->hSemSurf);
    if (semSurf->memory != NULL)
       nvkmd_mem_unref(semSurf->memory);
@@ -89,7 +89,7 @@ void nvRmSemSurfDestroy(struct NvRmSemSurf *semSurf)
 NV_STATUS nvRmSemSurfBindChannel(struct NvRmSemSurf *semSurf, NvHandle hChannel, NvU32 numNotifyIndices, NvU32 *notifyIndices)
 {
    struct NvRmApi rm;
-   nvkmd_nvrm_dev_api_dev(semSurf->dev, &rm);
+   nvkmd_nvrm_dev_api_ctl(semSurf->dev, &rm);
 
    if (numNotifyIndices > NV_SEMAPHORE_SURFACE_CTRL_CMD_BIND_CHANNEL_MAX_INDICES)
       return NV_ERR_INVALID_ARGUMENT;
@@ -105,7 +105,7 @@ NV_STATUS nvRmSemSurfBindChannel(struct NvRmSemSurf *semSurf, NvHandle hChannel,
 NV_STATUS nvRmSemSurfUnbindChannel(struct NvRmSemSurf *semSurf, NvHandle hChannel, NvU32 numNotifyIndices, NvU32 *notifyIndices)
 {
    struct NvRmApi rm;
-   nvkmd_nvrm_dev_api_dev(semSurf->dev, &rm);
+   nvkmd_nvrm_dev_api_ctl(semSurf->dev, &rm);
 
    if (numNotifyIndices > NV_SEMAPHORE_SURFACE_CTRL_CMD_BIND_CHANNEL_MAX_INDICES)
       return NV_ERR_INVALID_ARGUMENT;
@@ -121,7 +121,7 @@ NV_STATUS nvRmSemSurfUnbindChannel(struct NvRmSemSurf *semSurf, NvHandle hChanne
 NV_STATUS nvRmSemSurfRegisterWaiter(struct NvRmSemSurf *semSurf, NvU64 index, NvU64 waitValue, NvU64 newValue, NvU64 notificationHandle)
 {
    struct NvRmApi rm;
-   nvkmd_nvrm_dev_api_dev(semSurf->dev, &rm);
+   nvkmd_nvrm_dev_api_ctl(semSurf->dev, &rm);
 
    NV_SEMAPHORE_SURFACE_CTRL_REGISTER_WAITER_PARAMS params = {
       .index = index,
@@ -135,7 +135,7 @@ NV_STATUS nvRmSemSurfRegisterWaiter(struct NvRmSemSurf *semSurf, NvU64 index, Nv
 NV_STATUS nvRmSemSurfUnregisterWaiter(struct NvRmSemSurf *semSurf, NvU64 index, NvU64 waitValue, NvU64 notificationHandle)
 {
    struct NvRmApi rm;
-   nvkmd_nvrm_dev_api_dev(semSurf->dev, &rm);
+   nvkmd_nvrm_dev_api_ctl(semSurf->dev, &rm);
 
    NV_SEMAPHORE_SURFACE_CTRL_UNREGISTER_WAITER_PARAMS params = {
       .index = index,
@@ -184,7 +184,7 @@ NvU64 nvRmSemSurfGetValue(struct NvRmSemSurf *semSurf, NvU64 index)
 NV_STATUS nvRmSemSurfSetValue(struct NvRmSemSurf *semSurf, NvU64 index, NvU64 newValue)
 {
    struct NvRmApi rm;
-   nvkmd_nvrm_dev_api_dev(semSurf->dev, &rm);
+   nvkmd_nvrm_dev_api_ctl(semSurf->dev, &rm);
 
    NV_SEMAPHORE_SURFACE_CTRL_SET_VALUE_PARAMS params = {
       .index = index,

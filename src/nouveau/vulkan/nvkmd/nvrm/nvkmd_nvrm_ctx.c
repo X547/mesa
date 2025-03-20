@@ -5,7 +5,9 @@
 
 #include "nvkmd_nvrm.h"
 
+#include <stdio.h>
 #include <poll.h>
+#include <inttypes.h>
 
 #include "vk_log.h"
 
@@ -21,6 +23,8 @@
 #include "class/cl2080_notification.h" // NV2080_ENGINE_TYPE_GRAPHICS
 #include "class/clc36f.h" // VOLTA_CHANNEL_GPFIFO_A
 #include "class/cla16f.h" // KeplerBControlGPFifo
+#include "ctrl/ctrla06f/ctrla06fgpfifo.h" // NVA06F_CTRL_CMD_BIND
+#include "ctrl/ctrlc36f.h" // NVC36F_CTRL_CMD_INTERNAL_GPFIFO_GET_WORK_SUBMIT_TOKEN
 
 #define SUBC_NVC36F 0
 
@@ -32,10 +36,9 @@ nvkmd_nvrm_create_exec_ctx(struct nvkmd_dev *_dev,
 {
    struct nvkmd_nvrm_dev *dev = nvkmd_nvrm_dev(_dev);
    VkResult vkRes;
-
-   struct NvRmApi rm, ctlRm;
-   nvkmd_nvrm_dev_api_dev(dev, &rm);
-   nvkmd_nvrm_dev_api_ctl(dev, &ctlRm);
+   
+   struct NvRmApi rm;
+   nvkmd_nvrm_dev_api_ctl(dev, &rm);
 
    struct nvkmd_nvrm_exec_ctx *ctx = CALLOC_STRUCT(nvkmd_nvrm_exec_ctx);
    if (ctx == NULL)
@@ -46,16 +49,16 @@ nvkmd_nvrm_create_exec_ctx(struct nvkmd_dev *_dev,
    
    ctx->osEvent = -1;
 
-   vkRes = nvkmd_dev_alloc_mem(_dev, log_obj,  0x1000,  0x1000, NVKMD_MEM_GART,  &ctx->notifier);
+   vkRes = nvkmd_dev_alloc_mapped_mem(_dev, log_obj,  0x1000,  0x1000, NVKMD_MEM_GART, NVKMD_MEM_MAP_RDWR,  &ctx->notifier);
    if (vkRes != VK_SUCCESS)
    	goto error1;
-   vkRes = nvkmd_dev_alloc_mem(_dev, log_obj, 0x80000, 0x10000, NVKMD_MEM_LOCAL, &ctx->userD);
+   vkRes = nvkmd_dev_alloc_mapped_mem(_dev, log_obj, 0x80000, 0x10000, NVKMD_MEM_LOCAL, NVKMD_MEM_MAP_RDWR, &ctx->userD);
    if (vkRes != VK_SUCCESS)
    	goto error1;
-   vkRes = nvkmd_dev_alloc_mem(_dev, log_obj, 0x40000,  0x1000, NVKMD_MEM_GART,  &ctx->gpFifo);
+   vkRes = nvkmd_dev_alloc_mapped_mem(_dev, log_obj, 0x40000,  0x1000, NVKMD_MEM_GART, NVKMD_MEM_MAP_RDWR,  &ctx->gpFifo);
    if (vkRes != VK_SUCCESS)
    	goto error1;
-   vkRes = nvkmd_dev_alloc_mem(_dev, log_obj, 0x10000,  0x1000, NVKMD_MEM_GART,  &ctx->cmdBuf);
+   vkRes = nvkmd_dev_alloc_mapped_mem(_dev, log_obj, 0x10000,  0x1000, NVKMD_MEM_GART, NVKMD_MEM_MAP_RDWR,  &ctx->cmdBuf);
    if (vkRes != VK_SUCCESS)
    	goto error1;
 
@@ -74,6 +77,7 @@ nvkmd_nvrm_create_exec_ctx(struct nvkmd_dev *_dev,
       goto error1;
    }
 
+   NvU32 engineType = NV2080_ENGINE_TYPE_GRAPHICS;
 	NV_CHANNEL_ALLOC_PARAMS createChannelParams = {
 		.hObjectError  = ctx->hCtxDma,
 		.gpFifoOffset  = ctx->gpFifo->va->addr,
@@ -82,7 +86,7 @@ nvkmd_nvrm_create_exec_ctx(struct nvkmd_dev *_dev,
 		.hVASpace      = dev->hVaSpace,
 		.hUserdMemory  = {nvkmd_nvrm_mem(ctx->userD)->hMemoryPhys},
 		.userdOffset   = {0},
-		.engineType    = NV2080_ENGINE_TYPE_GRAPHICS,
+		.engineType    = engineType,
 	};
    nvRes = nvRmApiAlloc(&rm, dev->hDevice, &ctx->hChannel, TURING_CHANNEL_GPFIFO_A, &createChannelParams);
    if (nvRes != NV_OK) {
@@ -90,18 +94,98 @@ nvkmd_nvrm_create_exec_ctx(struct nvkmd_dev *_dev,
       goto error1;
    }
    
-   ctx->osEvent = open(ctlRm.nodeName, O_RDWR | O_CLOEXEC);
+	NVA06F_CTRL_BIND_PARAMS bindParams = {.engineType = engineType};
+	nvRes = nvRmApiControl(&rm, ctx->hChannel, NVA06F_CTRL_CMD_BIND, &bindParams, sizeof(bindParams));
+   if (nvRes != NV_OK) {
+      vkRes = VK_ERROR_UNKNOWN;
+      goto error1;
+   }
+	
+	NVA06F_CTRL_GPFIFO_SCHEDULE_PARAMS scheduleParams = {.bEnable = NV_TRUE};
+	nvRes = nvRmApiControl(&rm, ctx->hChannel, NVA06F_CTRL_CMD_GPFIFO_SCHEDULE, &scheduleParams, sizeof(scheduleParams));
+   if (nvRes != NV_OK) {
+      vkRes = VK_ERROR_UNKNOWN;
+      goto error1;
+   }
+
+	NVC36F_CTRL_GPFIFO_SET_WORK_SUBMIT_TOKEN_NOTIF_INDEX_PARAMS notifParams = {
+		.index = NV_CHANNELGPFIFO_NOTIFICATION_TYPE_WORK_SUBMIT_TOKEN
+	};
+	nvRes = nvRmApiControl(&rm, 
+		ctx->hChannel,
+		NVC36F_CTRL_CMD_GPFIFO_SET_WORK_SUBMIT_TOKEN_NOTIF_INDEX,
+		&notifParams,
+		sizeof(notifParams)
+	);
+   if (nvRes != NV_OK) {
+      vkRes = VK_ERROR_UNKNOWN;
+      goto error1;
+   }
+
+	NVC36F_CTRL_CMD_GPFIFO_GET_WORK_SUBMIT_TOKEN_PARAMS tokenParams = {0};
+	nvRes = nvRmApiControl(&rm,
+		ctx->hChannel,
+		NVC36F_CTRL_CMD_GPFIFO_GET_WORK_SUBMIT_TOKEN,
+		&tokenParams,
+		sizeof(tokenParams)
+	);
+   if (nvRes != NV_OK) {
+      vkRes = VK_ERROR_UNKNOWN;
+      goto error1;
+   }
+   
+   NvHandle hCopy = 0;
+   NvHandle hEng2d = 0;
+   NvHandle hEng3d = 0;
+   NvHandle hM2mf = 0;
+   NvHandle hCompute = 0;
+   nvRes = nvRmApiAlloc(&rm, ctx->hChannel, &hCopy, 0xc5b5, NULL);
+   if (nvRes != NV_OK) {
+      vkRes = VK_ERROR_UNKNOWN;
+      goto error1;
+   }
+   nvRes = nvRmApiAlloc(&rm, ctx->hChannel, &hEng2d, 0x902d, NULL);
+   if (nvRes != NV_OK) {
+      vkRes = VK_ERROR_UNKNOWN;
+      goto error1;
+   }
+   nvRes = nvRmApiAlloc(&rm, ctx->hChannel, &hEng3d, 0xc597, NULL);
+   if (nvRes != NV_OK) {
+      vkRes = VK_ERROR_UNKNOWN;
+      goto error1;
+   }
+   nvRes = nvRmApiAlloc(&rm, ctx->hChannel, &hM2mf, 0xa140, NULL);
+   if (nvRes != NV_OK) {
+      vkRes = VK_ERROR_UNKNOWN;
+      goto error1;
+   }
+   nvRes = nvRmApiAlloc(&rm, ctx->hChannel, &hCompute, 0xc5c0, NULL);
+   if (nvRes != NV_OK) {
+      vkRes = VK_ERROR_UNKNOWN;
+      goto error1;
+   }
+
+   ctx->osEvent = open(rm.nodeName, O_RDWR | O_CLOEXEC);
    if (ctx->osEvent < 0) {
       vkRes = VK_ERROR_UNKNOWN;
       goto error1;
    }
-   nvRes = nvRmApiAllocOsEvent(&ctlRm, ctx->osEvent);
+   struct NvRmApi rmOsEvent = rm;
+   rmOsEvent.fd = ctx->osEvent;
+   nvRes = nvRmApiAllocOsEvent(&rmOsEvent, ctx->osEvent);
    if (nvRes != NV_OK) {
       vkRes = VK_ERROR_UNKNOWN;
       goto error1;
    }
    
    nvRes = nvRmSemSurfCreate(dev, 0x1000, &ctx->semSurf);
+   if (nvRes != NV_OK) {
+      vkRes = VK_ERROR_UNKNOWN;
+      goto error1;
+   }
+
+	NvU32 notifyIndices[] = {12};
+	nvRes = nvRmSemSurfBindChannel(ctx->semSurf, ctx->hChannel, 1, notifyIndices);
    if (nvRes != NV_OK) {
       vkRes = VK_ERROR_UNKNOWN;
       goto error1;
@@ -121,7 +205,7 @@ nvkmd_nvrm_exec_ctx_destroy(struct nvkmd_ctx *_ctx)
    struct nvkmd_nvrm_exec_ctx *ctx = nvkmd_nvrm_exec_ctx(_ctx);
    struct nvkmd_nvrm_dev *dev = nvkmd_nvrm_dev(ctx->base.dev);
    struct NvRmApi rm;
-   nvkmd_nvrm_dev_api_dev(dev, &rm);
+   nvkmd_nvrm_dev_api_ctl(dev, &rm);
    
    if (ctx->semSurf != NULL)
       nvRmSemSurfDestroy(ctx->semSurf);
@@ -164,6 +248,7 @@ nvkmd_nvrm_exec_ctx_flush(struct nvkmd_ctx *_ctx,
 static void
 write_gp_fifo_entry(struct nvkmd_nvrm_exec_ctx *ctx, const struct nvkmd_ctx_exec *exec)
 {
+	//fprintf(stderr, "write_gp_fifo_entry(%#" PRIx64 ", %#" PRIx32 ")\n", exec->addr, exec->size_B);
 	uint32_t *ptr = (uint32_t*)ctx->gpFifo->map + 2*ctx->gpPut;
 
 	ptr[0] = DRF_NUM(A16F, _GP_ENTRY0, _GET, NvU64_LO32(exec->addr) >> 2);
@@ -183,23 +268,60 @@ nvkmd_nvrm_exec_ctx_exec(struct nvkmd_ctx *_ctx,
    struct nvkmd_nvrm_exec_ctx *ctx = nvkmd_nvrm_exec_ctx(_ctx);
    struct nvkmd_nvrm_dev *dev = nvkmd_nvrm_dev(ctx->base.dev);
    struct NvRmApi rm;
-   nvkmd_nvrm_dev_api_dev(dev, &rm);
+   nvkmd_nvrm_dev_api_ctl(dev, &rm);
 
    NvNotification *notifiers = ctx->notifier->map;
    NvNotification *submitTokenNotifier = &notifiers[NV_CHANNELGPFIFO_NOTIFICATION_TYPE_WORK_SUBMIT_TOKEN];
    KeplerBControlGPFifo *userD = ctx->userD->map;
+   uint64_t *maxSubmitted = (uint64_t*)((uint8_t*)ctx->semSurf->memory->map + 0x18);
 
    ctx->wSeq++;
+   *maxSubmitted = ctx->wSeq;
+
+   NV_STATUS nvRes = nvRmSemSurfRegisterWaiter(ctx->semSurf, 0, ctx->wSeq, 0, ctx->osEvent);
+   if (nvRes != NV_OK) {
+      fprintf(stderr, "[!] nvRes: %#x\n", nvRes);
+      return VK_ERROR_UNKNOWN;
+   }
 
    struct nv_push p;
-   nv_push_init(&p, ctx->cmdBuf->map, 0x10000);
+   nv_push_init(&p, ctx->cmdBuf->map, 0x10000 / 4);
 
    uint64_t semAdrGpu = ctx->semSurf->memory->va->addr;
+	
+	bool progressTrackerWFI = true;
+	*p.end++ =
+		DRF_DEF(A16F, _DMA, _SEC_OP,            _INC_METHOD) |
+		DRF_NUM(A16F, _DMA, _METHOD_COUNT,      5) |
+		DRF_NUM(A16F, _DMA, _METHOD_SUBCHANNEL, 0) |
+		DRF_NUM(A16F, _DMA, _METHOD_ADDRESS,    (NVC36F_SEM_ADDR_LO) >> 2)
+   ;
+   *p.end++ = (uint32_t)semAdrGpu;
+   *p.end++ = (uint32_t)(semAdrGpu >> 32);
+   *p.end++ = (uint32_t)ctx->wSeq;
+   *p.end++ = 0;
+   *p.end++ =
+		DRF_DEF(C36F, _SEM_EXECUTE, _OPERATION, _RELEASE) |
+		DRF_DEF(C36F, _SEM_EXECUTE, _PAYLOAD_SIZE, _32BIT) |
+		DRF_DEF(C36F, _SEM_EXECUTE, _RELEASE_TIMESTAMP, _DIS) |
+		(progressTrackerWFI ?
+			DRF_DEF(C36F, _SEM_EXECUTE, _RELEASE_WFI, _EN) :
+			DRF_DEF(C36F, _SEM_EXECUTE, _RELEASE_WFI, _DIS))
+   ;
 
+	*p.end++ =
+		DRF_DEF(A16F, _DMA, _SEC_OP,            _INC_METHOD) |
+		DRF_NUM(A16F, _DMA, _METHOD_COUNT,      1) |
+		DRF_NUM(A16F, _DMA, _METHOD_SUBCHANNEL, 0) |
+		DRF_NUM(A16F, _DMA, _METHOD_ADDRESS,    (NVC36F_NON_STALL_INTERRUPT) >> 2)
+   ;
+   *p.end++ = 0;
+
+#if 0
    P_MTHD(&p, NVC36F, SEM_ADDR_LO);
    P_NVC36F_SEM_ADDR_LO(&p, (uint32_t)semAdrGpu);
    P_NVC36F_SEM_ADDR_HI(&p, (uint32_t)(semAdrGpu >> 32));
-   P_NVC36F_SEM_PAYLOAD_LO(&p, ctx->wSeq);
+   P_NVC36F_SEM_PAYLOAD_LO(&p, (uint32_t)ctx->wSeq);
    P_NVC36F_SEM_PAYLOAD_HI(&p, 0);
    P_NVC36F_SEM_EXECUTE(&p, {
    	.operation = OPERATION_RELEASE,
@@ -207,18 +329,20 @@ nvkmd_nvrm_exec_ctx_exec(struct nvkmd_ctx *_ctx,
    	.payload_size = PAYLOAD_SIZE_32BIT,
    	.release_timestamp = RELEASE_TIMESTAMP_DIS,
    });
-
    P_MTHD(&p, NVC36F, NON_STALL_INTERRUPT);
    P_NVC36F_NON_STALL_INTERRUPT(&p, 0);
+#endif
 
    struct nvkmd_ctx_exec semExec = {
    	.addr = ctx->cmdBuf->va->addr,
-   	.size_B = nv_push_dw_count(&p),
+   	.size_B = 4*nv_push_dw_count(&p),
    };
 
+#if 1
    for (uint32_t i = 0; i < exec_count; i++) {
       write_gp_fifo_entry(ctx, &execs[i]);
    }
+#endif
    write_gp_fifo_entry(ctx, &semExec);
 
    userD->GPPut = ctx->gpPut;
@@ -226,7 +350,11 @@ nvkmd_nvrm_exec_ctx_exec(struct nvkmd_ctx *_ctx,
    volatile NvU32 *doorbell = (void*)((NvU8*)dev->usermodeMap.address + NVC361_NOTIFY_CHANNEL_PENDING);
    *doorbell = submitTokenNotifier->info32;
    
-   while (nvRmSemSurfGetValue(ctx->semSurf, 0) != ctx->wSeq) {
+   for (;;) {
+      uint64_t rSeq = nvRmSemSurfGetValue(ctx->semSurf, 0);
+      if (rSeq == ctx->wSeq) {
+         break;
+      }
 		struct pollfd pollFds[1] = {
 			{
 				.fd = ctx->osEvent,
@@ -234,9 +362,14 @@ nvkmd_nvrm_exec_ctx_exec(struct nvkmd_ctx *_ctx,
 			}
 		};
 		poll(pollFds, 1, 1000);
+#if 0
 		printf("poll\n");
+      fprintf(stderr, "rSeq: %#" PRIx64 "\n", rSeq);
+      fprintf(stderr, "GPGet: %" PRIu32 "\n", userD->GPGet);
+      fprintf(stderr, "GPPut: %" PRIu32 "\n", userD->GPPut);
+#endif
    }
-
+   
    ctx->gpGet = ctx->gpPut;
 
    return VK_SUCCESS;

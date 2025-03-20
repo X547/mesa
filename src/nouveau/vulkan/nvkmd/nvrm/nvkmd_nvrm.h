@@ -159,7 +159,7 @@ nvkmd_nvrm_sync_get_type(struct nvkmd_nvrm_pdev *pdev);
 static inline void
 nvkmd_nvrm_dev_api_dev(struct nvkmd_nvrm_dev *dev, struct NvRmApi *rm)
 {
-   rm->fd = dev->devFd;
+   rm->fd = dev->ctlFd;
    rm->hClient = dev->hClient;
    rm->nodeName = dev->devName;
 }

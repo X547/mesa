@@ -51,6 +51,7 @@ nvkmd_nvrm_create_pdev(struct vk_object_base *log_obj,
     .vram_size_B = 0x100000000, // 4GB
     .bar_size_B = 0x10000000 // 256 MB
    };
+   pdev->base.kmd_info.has_alloc_tiled = true;
 
    /* Nouveau uses the OS page size for all pages, regardless of whether they
     * come from VRAM or system RAM.
