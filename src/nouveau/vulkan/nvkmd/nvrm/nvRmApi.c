@@ -1,5 +1,6 @@
 #include "nvRmApi.h"
 
+#include <stdio.h>
 #include <errno.h>
 #ifdef __HAIKU__
 #include <sys/ioccom.h>
@@ -161,7 +162,7 @@ NvU32 nvRmApiMapMemory(NvRmApi *api, NvU32 hDevice, NvU32 hMemory, NvU64 offset,
 		.addressSpec = B_ANY_ADDRESS,
 		.protection = B_READ_AREA | B_WRITE_AREA,
 	};
-	ret = nvRmIoctl(memFd, NV_ESC_RM_MAP_MEMORY, &mapParams, sizeof(mapParams));
+	ret = nvRmIoctl(memFd, NV_HAIKU_MAP, &mapParams, sizeof(mapParams));
 	if (ret < 0) {
 		p.params.status = NV_ERR_GENERIC;
 		goto done1;

@@ -39,17 +39,20 @@ nvkmd_nvrm_create_dev(struct nvkmd_pdev *_pdev,
    dev->ctlFd = open("/dev/nvidiactl", O_RDWR | O_CLOEXEC);
    dev->devFd = open(dev->devName, O_RDWR | O_CLOEXEC);
 
-   struct NvRmApi rm;
+   struct NvRmApi rm, devRm;
    memset(&rm, 0, sizeof(rm));
-   rm.fd = dev->devFd;
+   rm.fd = dev->ctlFd;
 
    nvRmApiAlloc(&rm, 0, &dev->hClient, NV01_ROOT_CLIENT, NULL);
-   nvkmd_nvrm_dev_api_dev(dev, &rm);
+   nvkmd_nvrm_dev_api_ctl(dev, &rm);
+   nvkmd_nvrm_dev_api_dev(dev, &devRm);
 
-   nvRmApiAlloc(&rm, dev->hClient, &dev->hDevice, NV01_DEVICE_0, NULL);
+   NV0080_ALLOC_PARAMETERS ap0080 = {.deviceId = 0, .hClientShare = dev->hClient};
+	
+   nvRmApiAlloc(&rm, dev->hClient, &dev->hDevice, NV01_DEVICE_0, &ap0080);
    nvRmApiAlloc(&rm, dev->hDevice, &dev->hSubdevice, NV20_SUBDEVICE_0, NULL);
    nvRmApiAlloc(&rm, dev->hSubdevice, &dev->hUsermode, TURING_USERMODE_A, NULL);
-   nvRmApiMapMemory(&rm, dev->hSubdevice, dev->hUsermode, 0, 4096, 0, &dev->usermodeMap);
+   nvRmApiMapMemory(&devRm, dev->hSubdevice, dev->hUsermode, 0, 4096, 0, &dev->usermodeMap);
    NV_VASPACE_ALLOCATION_PARAMETERS vaSpaceParams = {
       .flags = NV_VASPACE_ALLOCATION_FLAGS_RETRY_PTE_ALLOC_IN_SYS,
    };
@@ -72,7 +75,7 @@ nvkmd_nvrm_dev_destroy(struct nvkmd_dev *_dev)
    struct nvkmd_nvrm_dev *dev = nvkmd_nvrm_dev(_dev);
 
    struct NvRmApi rm;
-   nvkmd_nvrm_dev_api_dev(dev, &rm);
+   nvkmd_nvrm_dev_api_ctl(dev, &rm);
 
    nvRmApiFree(&rm, dev->hVaSpace);
    nvRmApiUnmapMemory(&rm, dev->hSubdevice, dev->hUsermode, 0, &dev->usermodeMap);

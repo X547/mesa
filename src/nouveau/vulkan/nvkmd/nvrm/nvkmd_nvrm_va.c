@@ -23,10 +23,9 @@ nvkmd_nvrm_alloc_va(struct nvkmd_dev *_dev,
                        uint64_t fixed_addr, struct nvkmd_va **va_out)
 {
    struct nvkmd_nvrm_dev *dev = nvkmd_nvrm_dev(_dev);
-   VkResult result;
 
    struct NvRmApi rm;
-   nvkmd_nvrm_dev_api_dev(dev, &rm);
+   nvkmd_nvrm_dev_api_ctl(dev, &rm);
 
    struct nvkmd_nvrm_va *va = CALLOC_STRUCT(nvkmd_nvrm_va);
    if (va == NULL)
@@ -52,17 +51,19 @@ nvkmd_nvrm_alloc_va(struct nvkmd_dev *_dev,
 		.type = NVOS32_TYPE_IMAGE,
 		.flags =
 			NVOS32_ALLOC_FLAGS_VIRTUAL |
-			NVOS32_ALLOC_FLAGS_ALIGNMENT_FORCE,
+			((align_B != 0) ? NVOS32_ALLOC_FLAGS_ALIGNMENT_FORCE : 0),
 		.size = size_B,
 		.alignment = align_B,
 		.hVASpace = dev->hVaSpace,
 	};
    NV_STATUS nvRes = nvRmApiAlloc(&rm, dev->hDevice, &hMemoryVirt, NV50_MEMORY_VIRTUAL, &params);
    if (nvRes != NV_OK) {
+      fprintf(stderr, "[!] nvRes: %#x\n", nvRes);
    	nvkmd_va_free(&va->base);
       return VK_ERROR_UNKNOWN;
    }
    va->hMemoryVirt = hMemoryVirt;
+   va->base.addr = params.offset;
 
    *va_out = &va->base;
 
@@ -76,7 +77,7 @@ nvkmd_nvrm_va_free(struct nvkmd_va *_va)
    struct nvkmd_nvrm_va *va = nvkmd_nvrm_va(_va);
 
    struct NvRmApi rm;
-   nvkmd_nvrm_dev_api_dev(dev, &rm);
+   nvkmd_nvrm_dev_api_ctl(dev, &rm);
    
    nvRmApiFree(&rm, va->hMemoryVirt);
 
@@ -96,15 +97,23 @@ nvkmd_nvrm_va_bind_mem(struct nvkmd_va *_va,
    struct nvkmd_nvrm_mem *mem = nvkmd_nvrm_mem(_mem);
 
    struct NvRmApi rm;
-   nvkmd_nvrm_dev_api_dev(dev, &rm);
+   nvkmd_nvrm_dev_api_ctl(dev, &rm);
    
-   NvU32 gpuMapFlags = DRF_DEF(OS46, _FLAGS, _CACHE_SNOOP, _ENABLE);
+   NvU32 gpuMapFlags = 0;
+   if (mem->isSystemMem) {
+      gpuMapFlags |= DRF_DEF(OS46, _FLAGS, _CACHE_SNOOP, _ENABLE);
+   } else {
+      gpuMapFlags |= DRF_DEF(OS46, _FLAGS, _CACHE_SNOOP, _DISABLE);
+   }
    NvU64 dmaOffset = 0;
    NV_STATUS nvRes = nvRmApiMapMemoryDma(&rm, dev->hDevice, va->hMemoryVirt, mem->hMemoryPhys, mem_offset_B, range_B, gpuMapFlags, &dmaOffset);
-   if (nvRes != NV_OK)
+   if (nvRes != NV_OK) {
+      fprintf(stderr, "[!] nvRes: %#x\n", nvRes);
       return VK_ERROR_UNKNOWN;
+   }
 
    va->hMemoryPhys = mem->hMemoryPhys;
+   //va->base.addr = dmaOffset;
 
    return VK_SUCCESS;
 }
@@ -119,7 +128,7 @@ nvkmd_nvrm_va_unbind(struct nvkmd_va *_va,
    struct nvkmd_nvrm_va *va = nvkmd_nvrm_va(_va);
 
    struct NvRmApi rm;
-   nvkmd_nvrm_dev_api_dev(dev, &rm);
+   nvkmd_nvrm_dev_api_ctl(dev, &rm);
 
    NV_STATUS nvRes = nvRmApiUnmapMemoryDma(&rm, dev->hDevice, va->hMemoryVirt, va->hMemoryPhys, 0, va_offset_B);
    if (nvRes != NV_OK)
