@@ -107,12 +107,13 @@ struct nvkmd_nvrm_exec_ctx {
    struct nvkmd_mem *userD;
    struct nvkmd_mem *gpFifo;
    struct nvkmd_mem *cmdBuf;
-   struct nvkmd_mem *data;
    NvHandle hCtxDma;
    NvHandle hChannel;
    int osEvent;
    struct NvRmSemSurf *semSurf;
    uint64_t wSeq;
+   uint64_t gpGet;
+   uint64_t gpPut;
 };
 
 NVKMD_DECL_SUBCLASS(ctx, nvrm_exec);

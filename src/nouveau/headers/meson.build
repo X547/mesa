@@ -38,6 +38,7 @@ nv_classes = [
   'clcd97',
   'clcdc0',
   'clcec0',
+  'clc36f',
 ]
 
 hwref_gens = [
