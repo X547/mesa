@@ -160,7 +160,7 @@ NvU32 nvRmApiMapMemory(NvRmApi *api, NvU32 hDevice, NvU32 hMemory, NvU64 offset,
 	nv_haiku_map_params mapParams = {
 		.name = "NVRM",
 		.addressSpec = B_ANY_ADDRESS,
-		.protection = B_READ_AREA | B_WRITE_AREA,
+		.protection = B_READ_AREA | B_WRITE_AREA | B_CLONEABLE_AREA,
 	};
 	ret = nvRmIoctl(memFd, NV_HAIKU_MAP, &mapParams, sizeof(mapParams));
 	if (ret < 0) {
