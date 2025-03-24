@@ -23,6 +23,8 @@ nvkmd_nvrm_alloc_va(struct nvkmd_dev *_dev,
                        uint64_t fixed_addr, struct nvkmd_va **va_out)
 {
    struct nvkmd_nvrm_dev *dev = nvkmd_nvrm_dev(_dev);
+   
+   //fprintf(stderr, "nvkmd_nvrm_alloc_va(%#x)\n", pte_kind);
 
    struct NvRmApi rm;
    nvkmd_nvrm_dev_api_ctl(dev, &rm);
@@ -56,10 +58,22 @@ nvkmd_nvrm_alloc_va(struct nvkmd_dev *_dev,
 		.alignment = align_B,
 		.hVASpace = dev->hVaSpace,
 	};
+	if (pte_kind == 0x04) {
+		params.type = NVOS32_TYPE_DEPTH;
+		params.attr |= DRF_DEF(OS32, _ATTR, _DEPTH, _64);
+		params.attr |= DRF_DEF(OS32, _ATTR, _FORMAT, _BLOCK_LINEAR);
+		params.attr |= DRF_DEF(OS32, _ATTR, _Z_TYPE, _FLOAT);
+		params.attr |= DRF_DEF(OS32, _ATTR, _ZS_PACKING, _Z32_X24S8);
+		params.attr |= DRF_DEF(OS32, _ATTR, _COMPR, _NONE);
+	}
    NV_STATUS nvRes = nvRmApiAlloc(&rm, dev->hDevice, &hMemoryVirt, NV50_MEMORY_VIRTUAL, &params);
    if (nvRes != NV_OK) {
       fprintf(stderr, "[!] nvRes: %#x\n", nvRes);
    	nvkmd_va_free(&va->base);
+      return VK_ERROR_UNKNOWN;
+   }
+   if (pte_kind != 0 && params.format != pte_kind) {
+      fprintf(stderr, "[!] params.format(%#x) != pte_kind(%#x)\n", params.format, pte_kind);
       return VK_ERROR_UNKNOWN;
    }
    va->hMemoryVirt = hMemoryVirt;
@@ -100,12 +114,13 @@ nvkmd_nvrm_va_bind_mem(struct nvkmd_va *_va,
    nvkmd_nvrm_dev_api_ctl(dev, &rm);
    
    NvU32 gpuMapFlags = 0;
+   gpuMapFlags |= DRF_DEF(OS46, _FLAGS, _PAGE_KIND, _VIRTUAL);
    if (mem->isSystemMem) {
       gpuMapFlags |= DRF_DEF(OS46, _FLAGS, _CACHE_SNOOP, _ENABLE);
    } else {
       gpuMapFlags |= DRF_DEF(OS46, _FLAGS, _CACHE_SNOOP, _DISABLE);
    }
-   NvU64 dmaOffset = 0;
+   NvU64 dmaOffset = va_offset_B;
    NV_STATUS nvRes = nvRmApiMapMemoryDma(&rm, dev->hDevice, va->hMemoryVirt, mem->hMemoryPhys, mem_offset_B, range_B, gpuMapFlags, &dmaOffset);
    if (nvRes != NV_OK) {
       fprintf(stderr, "[!] nvRes: %#x\n", nvRes);
@@ -113,7 +128,6 @@ nvkmd_nvrm_va_bind_mem(struct nvkmd_va *_va,
    }
 
    va->hMemoryPhys = mem->hMemoryPhys;
-   //va->base.addr = dmaOffset;
 
    return VK_SUCCESS;
 }

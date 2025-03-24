@@ -85,12 +85,19 @@ nvkmd_nvrm_alloc_tiled_mem(struct nvkmd_dev *_dev,
                               enum nvkmd_mem_flags flags,
                               struct nvkmd_mem **mem_out)
 {
-   fprintf(stderr, "alloc_tiled_mem(%#" PRIx64 ", %#" PRIx64 ", %#" PRIx8 ", %#" PRIx16 ", %#x)\n",
-   	size_B, align_B, pte_kind, tile_mode, flags);
+   if (pte_kind != 0 || tile_mode != 0) {
+      fprintf(stderr, "alloc_tiled_mem(%#" PRIx64 ", %#" PRIx64 ", %#" PRIx8 ", %#" PRIx16 ", %#x)\n",
+   	   size_B, align_B, pte_kind, tile_mode, flags);
+   }
    struct nvkmd_nvrm_dev *dev = nvkmd_nvrm_dev(_dev);
 
    struct NvRmApi rm;
    nvkmd_nvrm_dev_api_ctl(dev, &rm);
+
+   if (dev->base.pdev->debug_flags & NVK_DEBUG_FORCE_GART) {
+      flags &= ~(NVKMD_MEM_LOCAL | NVKMD_MEM_VRAM);
+      flags |= NVKMD_MEM_GART;
+   }
 
    const uint32_t mem_align_B = _dev->pdev->bind_align_B;
    size_B = align64(size_B, mem_align_B);

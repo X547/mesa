@@ -96,9 +96,7 @@ vk_image_init(struct vk_device *device,
       vk_find_struct_const(pCreateInfo->pNext, WSI_IMAGE_CREATE_INFO_MESA);
    image->wsi_legacy_scanout = wsi_info && wsi_info->scanout;
 
-#if DETECT_OS_LINUX || DETECT_OS_BSD
    image->drm_format_mod = ((1ULL << 56) - 1) /* DRM_FORMAT_MOD_INVALID */;
-#endif
 
 #if DETECT_OS_ANDROID
    if (image->external_handle_types &
@@ -168,7 +166,6 @@ vk_image_destroy(struct vk_device *device,
    vk_object_free(device, alloc, image);
 }
 
-#if DETECT_OS_LINUX || DETECT_OS_BSD
 VKAPI_ATTR VkResult VKAPI_CALL
 vk_common_GetImageDrmFormatModifierPropertiesEXT(UNUSED VkDevice device,
                                                  VkImage _image,
@@ -184,7 +181,6 @@ vk_common_GetImageDrmFormatModifierPropertiesEXT(UNUSED VkDevice device,
 
    return VK_SUCCESS;
 }
-#endif
 
 VKAPI_ATTR void VKAPI_CALL
 vk_common_GetImageSubresourceLayout(VkDevice _device, VkImage _image,
