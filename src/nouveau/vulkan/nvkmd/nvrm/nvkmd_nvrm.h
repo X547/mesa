@@ -109,6 +109,13 @@ struct nvkmd_nvrm_exec_ctx {
    struct nvkmd_mem *cmdBuf;
    NvHandle hCtxDma;
    NvHandle hChannel;
+   struct {
+	   NvHandle hCopy;
+	   NvHandle hEng2d;
+	   NvHandle hEng3d;
+	   NvHandle hM2mf;
+	   NvHandle hCompute;
+   } subchannels;
    int osEvent;
    struct NvRmSemSurf *semSurf;
    uint64_t wSeq;

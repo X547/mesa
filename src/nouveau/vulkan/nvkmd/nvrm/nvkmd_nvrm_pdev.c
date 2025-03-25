@@ -11,6 +11,12 @@
 
 #include <string.h>
 
+#include "class/clc5b5.h" // TURING_DMA_COPY_A
+#include "class/cl902d.h" // FERMI_TWOD_A
+#include "class/clc597.h" // TURING_A
+#include "class/cla140.h" // KEPLER_INLINE_TO_MEMORY_B
+#include "class/clc5c0.h" // TURING_COMPUTE_A
+
 
 static VkResult
 nvkmd_nvrm_create_pdev(struct vk_object_base *log_obj,
@@ -38,18 +44,18 @@ nvkmd_nvrm_create_pdev(struct vk_object_base *log_obj,
         .func = 0,
         .revision_id = 255
     },
-    .sm = 75,
-    .gpc_count = 1,
-    .tpc_count = 3,
-    .mp_per_tpc = 2,
-    .max_warps_per_mp = 32,
-    .cls_copy = 0xc5b5,
-    .cls_eng2d = 0x902d,
-    .cls_eng3d = 0xc597,
-    .cls_m2mf = 0xa140,
-    .cls_compute = 0xc5c0,
-    .vram_size_B = 0x100000000, // 4GB
-    .bar_size_B = 0x10000000 // 256 MB
+    .sm = 75, // sm_for_chipset(device->info.chipset);
+    .gpc_count = 1, // NV2080_CTRL_CMD_GR_GET_GPC_MASK
+    .tpc_count = 3, // NV2080_CTRL_CMD_GR_GET_TPC_MASK
+    .mp_per_tpc = 2, // mp_per_tpc_for_chipset(device->info.chipset);
+    .max_warps_per_mp = 32, // NV0080_CTRL_GR_INFO_INDEX_MAX_WARPS_PER_SM
+    .cls_copy    = TURING_DMA_COPY_A,
+    .cls_eng2d   = FERMI_TWOD_A,
+    .cls_eng3d   = TURING_A,
+    .cls_m2mf    = KEPLER_INLINE_TO_MEMORY_B,
+    .cls_compute = TURING_COMPUTE_A,
+    .vram_size_B = 0x100000000, //   4 GB
+    .bar_size_B  =  0x10000000  // 256 MB
    };
    pdev->base.kmd_info.has_alloc_tiled = true;
 
