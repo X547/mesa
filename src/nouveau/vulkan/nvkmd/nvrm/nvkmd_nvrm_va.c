@@ -74,6 +74,7 @@ nvkmd_nvrm_alloc_va(struct nvkmd_dev *_dev,
    }
    if (pte_kind != 0 && params.format != pte_kind) {
       fprintf(stderr, "[!] params.format(%#x) != pte_kind(%#x)\n", params.format, pte_kind);
+      nvkmd_va_free(&va->base);
       return VK_ERROR_UNKNOWN;
    }
    va->hMemoryVirt = hMemoryVirt;

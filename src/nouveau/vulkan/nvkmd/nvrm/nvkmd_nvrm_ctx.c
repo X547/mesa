@@ -35,8 +35,9 @@ nvkmd_nvrm_create_exec_ctx(struct nvkmd_dev *_dev,
                               struct nvkmd_ctx **ctx_out)
 {
    struct nvkmd_nvrm_dev *dev = nvkmd_nvrm_dev(_dev);
+   struct nvkmd_nvrm_pdev *pdev = nvkmd_nvrm_pdev(dev->base.pdev);
    VkResult vkRes;
-   
+
    struct NvRmApi rm;
    nvkmd_nvrm_dev_api_ctl(dev, &rm);
 
@@ -133,33 +134,28 @@ nvkmd_nvrm_create_exec_ctx(struct nvkmd_dev *_dev,
       vkRes = VK_ERROR_UNKNOWN;
       goto error1;
    }
-   
-   NvHandle hCopy = 0;
-   NvHandle hEng2d = 0;
-   NvHandle hEng3d = 0;
-   NvHandle hM2mf = 0;
-   NvHandle hCompute = 0;
-   nvRes = nvRmApiAlloc(&rm, ctx->hChannel, &hCopy, 0xc5b5, NULL);
+
+   nvRes = nvRmApiAlloc(&rm, ctx->hChannel, &ctx->subchannels.hCopy, pdev->base.dev_info.cls_copy, NULL);
    if (nvRes != NV_OK) {
       vkRes = VK_ERROR_UNKNOWN;
       goto error1;
    }
-   nvRes = nvRmApiAlloc(&rm, ctx->hChannel, &hEng2d, 0x902d, NULL);
+   nvRes = nvRmApiAlloc(&rm, ctx->hChannel, &ctx->subchannels.hEng2d, pdev->base.dev_info.cls_eng2d, NULL);
    if (nvRes != NV_OK) {
       vkRes = VK_ERROR_UNKNOWN;
       goto error1;
    }
-   nvRes = nvRmApiAlloc(&rm, ctx->hChannel, &hEng3d, 0xc597, NULL);
+   nvRes = nvRmApiAlloc(&rm, ctx->hChannel, &ctx->subchannels.hEng3d, pdev->base.dev_info.cls_eng3d, NULL);
    if (nvRes != NV_OK) {
       vkRes = VK_ERROR_UNKNOWN;
       goto error1;
    }
-   nvRes = nvRmApiAlloc(&rm, ctx->hChannel, &hM2mf, 0xa140, NULL);
+   nvRes = nvRmApiAlloc(&rm, ctx->hChannel, &ctx->subchannels.hM2mf, pdev->base.dev_info.cls_m2mf, NULL);
    if (nvRes != NV_OK) {
       vkRes = VK_ERROR_UNKNOWN;
       goto error1;
    }
-   nvRes = nvRmApiAlloc(&rm, ctx->hChannel, &hCompute, 0xc5c0, NULL);
+   nvRes = nvRmApiAlloc(&rm, ctx->hChannel, &ctx->subchannels.hCompute, pdev->base.dev_info.cls_compute, NULL);
    if (nvRes != NV_OK) {
       vkRes = VK_ERROR_UNKNOWN;
       goto error1;
@@ -211,6 +207,11 @@ nvkmd_nvrm_exec_ctx_destroy(struct nvkmd_ctx *_ctx)
       nvRmSemSurfDestroy(ctx->semSurf);
    if (ctx->osEvent >= 0)
       close(ctx->osEvent);
+   nvRmApiFree(&rm, ctx->subchannels.hCopy);
+   nvRmApiFree(&rm, ctx->subchannels.hEng2d);
+   nvRmApiFree(&rm, ctx->subchannels.hEng3d);
+   nvRmApiFree(&rm, ctx->subchannels.hM2mf);
+   nvRmApiFree(&rm, ctx->subchannels.hCompute);
    nvRmApiFree(&rm, ctx->hChannel);
    nvRmApiFree(&rm, ctx->hCtxDma);
    if (ctx->cmdBuf != NULL)
