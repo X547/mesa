@@ -420,6 +420,8 @@ nvkmd_nvrm_create_bind_ctx(struct nvkmd_dev *_dev,
    ctx->base.ops = &nvkmd_nvrm_bind_ctx_ops;
    ctx->base.dev = &dev->base;
 
+   // TODO: implement using NV_MEMORY_MAPPER
+
    *ctx_out = &ctx->base;
 
    return VK_SUCCESS;
