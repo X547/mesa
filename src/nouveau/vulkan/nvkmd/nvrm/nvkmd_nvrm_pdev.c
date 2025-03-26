@@ -33,8 +33,8 @@ nvkmd_nvrm_create_pdev(struct vk_object_base *log_obj,
    
    pdev->base.dev_info = (struct nv_device_info) {
     .type = NV_DEVICE_TYPE_DIS,
-    .device_id = 8178,
-    .chipset = 359,
+    .device_id = 0x1ff2, // PCI device ID
+    .chipset = 0x167, // NV2080_CTRL_MC_GET_ARCH_INFO_PARAMS, params.architecture | params.implementation
     .device_name = "NVIDIA T400 4GB",
     .chipset_name = "TU117",
     .pci = {
@@ -44,10 +44,10 @@ nvkmd_nvrm_create_pdev(struct vk_object_base *log_obj,
         .func = 0,
         .revision_id = 255
     },
-    .sm = 75, // sm_for_chipset(device->info.chipset);
+    .sm = 75, // sm_for_chipset(device->info.chipset), NV0080_CTRL_GR_INFO_INDEX_SM_VERSION
     .gpc_count = 1, // NV2080_CTRL_CMD_GR_GET_GPC_MASK
     .tpc_count = 3, // NV2080_CTRL_CMD_GR_GET_TPC_MASK
-    .mp_per_tpc = 2, // mp_per_tpc_for_chipset(device->info.chipset);
+    .mp_per_tpc = 2, // mp_per_tpc_for_chipset(device->info.chipset), NV0080_CTRL_CMD_GR_GET_INFO_V2(NV0080_CTRL_GR_INFO_INDEX_LITTER_NUM_SM_PER_TPC)
     .max_warps_per_mp = 32, // NV0080_CTRL_GR_INFO_INDEX_MAX_WARPS_PER_SM
     .cls_copy    = TURING_DMA_COPY_A,
     .cls_eng2d   = FERMI_TWOD_A,
