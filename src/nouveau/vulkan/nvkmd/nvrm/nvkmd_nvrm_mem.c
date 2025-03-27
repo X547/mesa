@@ -22,8 +22,9 @@ create_mem_or_close_bo(struct nvkmd_nvrm_dev *dev,
                        uint8_t pte_kind, uint64_t va_align_B,
                        struct nvkmd_mem **mem_out)
 {
+   struct nvkmd_nvrm_pdev *pdev = nvkmd_nvrm_pdev(dev->base.pdev);
    struct NvRmApi rm;
-   nvkmd_nvrm_dev_api_ctl(dev, &rm);
+   nvkmd_nvrm_dev_api_ctl(pdev, &rm);
 
    VkResult result;
 
@@ -90,9 +91,10 @@ nvkmd_nvrm_alloc_tiled_mem(struct nvkmd_dev *_dev,
    	   size_B, align_B, pte_kind, tile_mode, flags);
    }
    struct nvkmd_nvrm_dev *dev = nvkmd_nvrm_dev(_dev);
+   struct nvkmd_nvrm_pdev *pdev = nvkmd_nvrm_pdev(dev->base.pdev);
 
    struct NvRmApi rm;
-   nvkmd_nvrm_dev_api_ctl(dev, &rm);
+   nvkmd_nvrm_dev_api_ctl(pdev, &rm);
 
    if (dev->base.pdev->debug_flags & NVK_DEBUG_FORCE_GART) {
       flags &= ~(NVKMD_MEM_LOCAL | NVKMD_MEM_VRAM);
@@ -113,7 +115,7 @@ nvkmd_nvrm_alloc_tiled_mem(struct nvkmd_dev *_dev,
 		NV01_MEMORY_LOCAL_USER;
 
 	NV_MEMORY_ALLOCATION_PARAMS params = {
-		.owner = dev->hClient,
+		.owner = pdev->hClient,
 		.type = NVOS32_TYPE_IMAGE,
 		.flags = (align_B != 0) ? NVOS32_ALLOC_FLAGS_ALIGNMENT_FORCE : 0,
 		.attr = DRF_DEF(OS32, _ATTR, _PAGE_SIZE, _4KB),
@@ -130,7 +132,7 @@ nvkmd_nvrm_alloc_tiled_mem(struct nvkmd_dev *_dev,
 	}
 
 	NvHandle hMemoryPhys = 0;
-   NV_STATUS nvRes = nvRmApiAlloc(&rm, dev->hDevice, &hMemoryPhys, hClass, &params);
+   NV_STATUS nvRes = nvRmApiAlloc(&rm, pdev->hDevice, &hMemoryPhys, hClass, &params);
    if (nvRes != NV_OK) {
       fprintf(stderr, "[!] nvRes: %#x\n", nvRes);
       return VK_ERROR_UNKNOWN;
@@ -153,9 +155,11 @@ static void
 nvkmd_nvrm_mem_free(struct nvkmd_mem *_mem)
 {
    struct nvkmd_nvrm_mem *mem = nvkmd_nvrm_mem(_mem);
+   struct nvkmd_nvrm_dev *dev = nvkmd_nvrm_dev(mem->base.dev);
+   struct nvkmd_nvrm_pdev *pdev = nvkmd_nvrm_pdev(dev->base.pdev);
 
    struct NvRmApi rm;
-   nvkmd_nvrm_dev_api_dev(nvkmd_nvrm_dev(mem->base.dev), &rm);
+   nvkmd_nvrm_dev_api_dev(pdev, &rm);
 
    nvkmd_va_free(mem->base.va);
    nvRmApiFree(&rm, mem->hMemoryPhys);
@@ -171,17 +175,18 @@ nvkmd_nvrm_mem_map(struct nvkmd_mem *_mem,
 {
    struct nvkmd_nvrm_mem *mem = nvkmd_nvrm_mem(_mem);
    struct nvkmd_nvrm_dev *dev = nvkmd_nvrm_dev(_mem->dev);
+   struct nvkmd_nvrm_pdev *pdev = nvkmd_nvrm_pdev(dev->base.pdev);
 
    struct NvRmApi rm;
    if (mem->isSystemMem) {
-      nvkmd_nvrm_dev_api_ctl(dev, &rm);
+      nvkmd_nvrm_dev_api_ctl(pdev, &rm);
    } else {
-      nvkmd_nvrm_dev_api_dev(dev, &rm);
+      nvkmd_nvrm_dev_api_dev(pdev, &rm);
    }
 
    NvRmApiMapping mapping;
    memset(&mapping, 0, sizeof(mapping));
-   NV_STATUS nvRes = nvRmApiMapMemory(&rm, dev->hSubdevice, mem->hMemoryPhys, 0, mem->base.size_B, 0, &mapping);
+   NV_STATUS nvRes = nvRmApiMapMemory(&rm, pdev->hSubdevice, mem->hMemoryPhys, 0, mem->base.size_B, 0, &mapping);
    if (nvRes != NV_OK) {
       fprintf(stderr, "[!] nvRes: %#x\n", nvRes);
       return VK_ERROR_UNKNOWN;
@@ -198,12 +203,13 @@ nvkmd_nvrm_mem_unmap(struct nvkmd_mem *_mem,
 {
    struct nvkmd_nvrm_mem *mem = nvkmd_nvrm_mem(_mem);
    struct nvkmd_nvrm_dev *dev = nvkmd_nvrm_dev(_mem->dev);
+   struct nvkmd_nvrm_pdev *pdev = nvkmd_nvrm_pdev(dev->base.pdev);
 
    struct NvRmApi rm;
    if (mem->isSystemMem) {
-      nvkmd_nvrm_dev_api_ctl(dev, &rm);
+      nvkmd_nvrm_dev_api_ctl(pdev, &rm);
    } else {
-      nvkmd_nvrm_dev_api_dev(dev, &rm);
+      nvkmd_nvrm_dev_api_dev(pdev, &rm);
    }
 
    NvRmApiMapping mapping;
@@ -216,7 +222,7 @@ nvkmd_nvrm_mem_unmap(struct nvkmd_mem *_mem,
 #else
    mapping.size = mem->base.size_B;
 #endif
-   nvRmApiUnmapMemory(&rm, dev->hSubdevice, mem->hMemoryPhys, 0, &mapping);
+   nvRmApiUnmapMemory(&rm, pdev->hSubdevice, mem->hMemoryPhys, 0, &mapping);
 }
 
 static VkResult

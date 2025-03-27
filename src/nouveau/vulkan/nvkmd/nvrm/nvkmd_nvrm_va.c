@@ -23,11 +23,12 @@ nvkmd_nvrm_alloc_va(struct nvkmd_dev *_dev,
                        uint64_t fixed_addr, struct nvkmd_va **va_out)
 {
    struct nvkmd_nvrm_dev *dev = nvkmd_nvrm_dev(_dev);
-   
+   struct nvkmd_nvrm_pdev *pdev = nvkmd_nvrm_pdev(dev->base.pdev);
+
    //fprintf(stderr, "nvkmd_nvrm_alloc_va(%#x)\n", pte_kind);
 
    struct NvRmApi rm;
-   nvkmd_nvrm_dev_api_ctl(dev, &rm);
+   nvkmd_nvrm_dev_api_ctl(pdev, &rm);
 
    struct nvkmd_nvrm_va *va = CALLOC_STRUCT(nvkmd_nvrm_va);
    if (va == NULL)
@@ -49,14 +50,14 @@ nvkmd_nvrm_alloc_va(struct nvkmd_dev *_dev,
 
 	NvHandle hMemoryVirt = 0;
 	NV_MEMORY_ALLOCATION_PARAMS params = {
-		.owner = dev->hClient,
+		.owner = pdev->hClient,
 		.type = NVOS32_TYPE_IMAGE,
 		.flags =
 			NVOS32_ALLOC_FLAGS_VIRTUAL |
 			((align_B != 0) ? NVOS32_ALLOC_FLAGS_ALIGNMENT_FORCE : 0),
 		.size = size_B,
 		.alignment = align_B,
-		.hVASpace = dev->hVaSpace,
+		.hVASpace = pdev->hVaSpace,
 	};
 	if (pte_kind == 0x04) {
 		params.type = NVOS32_TYPE_DEPTH;
@@ -66,7 +67,7 @@ nvkmd_nvrm_alloc_va(struct nvkmd_dev *_dev,
 		params.attr |= DRF_DEF(OS32, _ATTR, _ZS_PACKING, _Z32_X24S8);
 		params.attr |= DRF_DEF(OS32, _ATTR, _COMPR, _NONE);
 	}
-   NV_STATUS nvRes = nvRmApiAlloc(&rm, dev->hDevice, &hMemoryVirt, NV50_MEMORY_VIRTUAL, &params);
+   NV_STATUS nvRes = nvRmApiAlloc(&rm, pdev->hDevice, &hMemoryVirt, NV50_MEMORY_VIRTUAL, &params);
    if (nvRes != NV_OK) {
       fprintf(stderr, "[!] nvRes: %#x\n", nvRes);
    	nvkmd_va_free(&va->base);
@@ -89,10 +90,11 @@ static void
 nvkmd_nvrm_va_free(struct nvkmd_va *_va)
 {
    struct nvkmd_nvrm_dev *dev = nvkmd_nvrm_dev(_va->dev);
+   struct nvkmd_nvrm_pdev *pdev = nvkmd_nvrm_pdev(dev->base.pdev);
    struct nvkmd_nvrm_va *va = nvkmd_nvrm_va(_va);
 
    struct NvRmApi rm;
-   nvkmd_nvrm_dev_api_ctl(dev, &rm);
+   nvkmd_nvrm_dev_api_ctl(pdev, &rm);
    
    nvRmApiFree(&rm, va->hMemoryVirt);
 
@@ -108,11 +110,12 @@ nvkmd_nvrm_va_bind_mem(struct nvkmd_va *_va,
                           uint64_t range_B)
 {
    struct nvkmd_nvrm_dev *dev = nvkmd_nvrm_dev(_va->dev);
+   struct nvkmd_nvrm_pdev *pdev = nvkmd_nvrm_pdev(dev->base.pdev);
    struct nvkmd_nvrm_va *va = nvkmd_nvrm_va(_va);
    struct nvkmd_nvrm_mem *mem = nvkmd_nvrm_mem(_mem);
 
    struct NvRmApi rm;
-   nvkmd_nvrm_dev_api_ctl(dev, &rm);
+   nvkmd_nvrm_dev_api_ctl(pdev, &rm);
    
    NvU32 gpuMapFlags = 0;
    gpuMapFlags |= DRF_DEF(OS46, _FLAGS, _PAGE_KIND, _VIRTUAL);
@@ -122,7 +125,7 @@ nvkmd_nvrm_va_bind_mem(struct nvkmd_va *_va,
       gpuMapFlags |= DRF_DEF(OS46, _FLAGS, _CACHE_SNOOP, _DISABLE);
    }
    NvU64 dmaOffset = va_offset_B;
-   NV_STATUS nvRes = nvRmApiMapMemoryDma(&rm, dev->hDevice, va->hMemoryVirt, mem->hMemoryPhys, mem_offset_B, range_B, gpuMapFlags, &dmaOffset);
+   NV_STATUS nvRes = nvRmApiMapMemoryDma(&rm, pdev->hDevice, va->hMemoryVirt, mem->hMemoryPhys, mem_offset_B, range_B, gpuMapFlags, &dmaOffset);
    if (nvRes != NV_OK) {
       fprintf(stderr, "[!] nvRes: %#x\n", nvRes);
       return VK_ERROR_UNKNOWN;
@@ -140,12 +143,13 @@ nvkmd_nvrm_va_unbind(struct nvkmd_va *_va,
                         uint64_t range_B)
 {
    struct nvkmd_nvrm_dev *dev = nvkmd_nvrm_dev(_va->dev);
+   struct nvkmd_nvrm_pdev *pdev = nvkmd_nvrm_pdev(dev->base.pdev);
    struct nvkmd_nvrm_va *va = nvkmd_nvrm_va(_va);
 
    struct NvRmApi rm;
-   nvkmd_nvrm_dev_api_ctl(dev, &rm);
+   nvkmd_nvrm_dev_api_ctl(pdev, &rm);
 
-   NV_STATUS nvRes = nvRmApiUnmapMemoryDma(&rm, dev->hDevice, va->hMemoryVirt, va->hMemoryPhys, 0, va_offset_B);
+   NV_STATUS nvRes = nvRmApiUnmapMemoryDma(&rm, pdev->hDevice, va->hMemoryVirt, va->hMemoryPhys, 0, va_offset_B);
    if (nvRes != NV_OK)
       return VK_ERROR_UNKNOWN;
 
