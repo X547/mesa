@@ -13,11 +13,6 @@
 
 #include "nvos.h"
 
-#include "class/cl0080.h" // NV01_DEVICE_0
-#include "class/cl2080.h" // NV20_SUBDEVICE_0
-#include "class/cl90f1.h" // FERMI_VASPACE_A
-#include "class/clc461.h" // TURING_USERMODE_A
-
 VkResult
 nvkmd_nvrm_create_dev(struct nvkmd_pdev *_pdev,
                          struct vk_object_base *log_obj,
@@ -28,36 +23,6 @@ nvkmd_nvrm_create_dev(struct nvkmd_pdev *_pdev,
    struct nvkmd_nvrm_dev *dev = CALLOC_STRUCT(nvkmd_nvrm_dev);
    if (dev == NULL)
       return vk_error(log_obj, VK_ERROR_OUT_OF_HOST_MEMORY);
-
-   dev->ctlFd = -1;
-   dev->devFd = -1;
-
-   dev->devName = strdup("/dev/nvidia0");
-   if (dev->devName == NULL)
-      return vk_error(log_obj, VK_ERROR_OUT_OF_HOST_MEMORY);
-
-   dev->ctlFd = open("/dev/nvidiactl", O_RDWR | O_CLOEXEC);
-   dev->devFd = open(dev->devName, O_RDWR | O_CLOEXEC);
-
-   struct NvRmApi rm, devRm;
-   memset(&rm, 0, sizeof(rm));
-   rm.fd = dev->ctlFd;
-
-   nvRmApiAlloc(&rm, 0, &dev->hClient, NV01_ROOT_CLIENT, NULL);
-   nvkmd_nvrm_dev_api_ctl(dev, &rm);
-   nvkmd_nvrm_dev_api_dev(dev, &devRm);
-
-   NV0080_ALLOC_PARAMETERS ap0080 = {.deviceId = 0, .hClientShare = dev->hClient};
-	
-   nvRmApiAlloc(&rm, dev->hClient, &dev->hDevice, NV01_DEVICE_0, &ap0080);
-   nvRmApiAlloc(&rm, dev->hDevice, &dev->hSubdevice, NV20_SUBDEVICE_0, NULL);
-   nvRmApiAlloc(&rm, dev->hSubdevice, &dev->hUsermode, TURING_USERMODE_A, NULL);
-   nvRmApiMapMemory(&devRm, dev->hSubdevice, dev->hUsermode, 0, 4096, 0, &dev->usermodeMap);
-   NV_VASPACE_ALLOCATION_PARAMETERS vaSpaceParams = {
-      .flags = NV_VASPACE_ALLOCATION_FLAGS_RETRY_PTE_ALLOC_IN_SYS,
-   };
-   nvRmApiAlloc(&rm, dev->hDevice, &dev->hVaSpace, FERMI_VASPACE_A, &vaSpaceParams);
-   nvRmApiControl(&rm, dev->hSubdevice, NV2080_CTRL_CMD_FB_GET_SEMAPHORE_SURFACE_LAYOUT, &dev->semSurfLayout, sizeof(dev->semSurfLayout));
 
    dev->base.ops = &nvkmd_nvrm_dev_ops;
    dev->base.pdev = &pdev->base;
@@ -73,19 +38,7 @@ static void
 nvkmd_nvrm_dev_destroy(struct nvkmd_dev *_dev)
 {
    struct nvkmd_nvrm_dev *dev = nvkmd_nvrm_dev(_dev);
-
-   struct NvRmApi rm;
-   nvkmd_nvrm_dev_api_ctl(dev, &rm);
-
-   nvRmApiFree(&rm, dev->hVaSpace);
-   nvRmApiUnmapMemory(&rm, dev->hSubdevice, dev->hUsermode, 0, &dev->usermodeMap);
-   nvRmApiFree(&rm, dev->hUsermode);
-   nvRmApiFree(&rm, dev->hSubdevice);
-   nvRmApiFree(&rm, dev->hDevice);
-
-   close(dev->devFd);
-   close(dev->ctlFd);
-   free(dev->devName);
+   struct nvkmd_nvrm_pdev *pdev = nvkmd_nvrm_pdev(dev->base.pdev);
 
    FREE(dev);
 }

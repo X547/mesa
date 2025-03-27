@@ -11,6 +11,11 @@
 
 #include <string.h>
 
+#include "class/cl0080.h" // NV01_DEVICE_0
+#include "class/cl2080.h" // NV20_SUBDEVICE_0
+#include "class/cl90f1.h" // FERMI_VASPACE_A
+#include "class/clc461.h" // TURING_USERMODE_A
+
 #include "class/clc5b5.h" // TURING_DMA_COPY_A
 #include "class/cl902d.h" // FERMI_TWOD_A
 #include "class/clc597.h" // TURING_A
@@ -30,7 +35,37 @@ nvkmd_nvrm_create_pdev(struct vk_object_base *log_obj,
 
    pdev->base.ops = &nvkmd_nvrm_pdev_ops;
    pdev->base.debug_flags = debug_flags;
-   
+
+   pdev->ctlFd = -1;
+   pdev->devFd = -1;
+
+   pdev->devName = strdup("/dev/nvidia0");
+   if (pdev->devName == NULL)
+      return vk_error(log_obj, VK_ERROR_OUT_OF_HOST_MEMORY);
+
+   pdev->ctlFd = open("/dev/nvidiactl", O_RDWR | O_CLOEXEC);
+   pdev->devFd = open(pdev->devName, O_RDWR | O_CLOEXEC);
+
+   struct NvRmApi rm, devRm;
+   memset(&rm, 0, sizeof(rm));
+   rm.fd = pdev->ctlFd;
+
+   nvRmApiAlloc(&rm, 0, &pdev->hClient, NV01_ROOT_CLIENT, NULL);
+   nvkmd_nvrm_dev_api_ctl(pdev, &rm);
+   nvkmd_nvrm_dev_api_dev(pdev, &devRm);
+
+   NV0080_ALLOC_PARAMETERS ap0080 = {.deviceId = 0, .hClientShare = pdev->hClient};
+	
+   nvRmApiAlloc(&rm, pdev->hClient, &pdev->hDevice, NV01_DEVICE_0, &ap0080);
+   nvRmApiAlloc(&rm, pdev->hDevice, &pdev->hSubdevice, NV20_SUBDEVICE_0, NULL);
+   nvRmApiAlloc(&rm, pdev->hSubdevice, &pdev->hUsermode, TURING_USERMODE_A, NULL);
+   nvRmApiMapMemory(&devRm, pdev->hSubdevice, pdev->hUsermode, 0, 4096, 0, &pdev->usermodeMap);
+   NV_VASPACE_ALLOCATION_PARAMETERS vaSpaceParams = {
+      .flags = NV_VASPACE_ALLOCATION_FLAGS_RETRY_PTE_ALLOC_IN_SYS,
+   };
+   nvRmApiAlloc(&rm, pdev->hDevice, &pdev->hVaSpace, FERMI_VASPACE_A, &vaSpaceParams);
+   nvRmApiControl(&rm, pdev->hSubdevice, NV2080_CTRL_CMD_FB_GET_SEMAPHORE_SURFACE_LAYOUT, &pdev->semSurfLayout, sizeof(pdev->semSurfLayout));
+
    pdev->base.dev_info = (struct nv_device_info) {
     .type = NV_DEVICE_TYPE_DIS,
     .device_id = 0x1ff2, // PCI device ID
@@ -101,6 +136,19 @@ static void
 nvkmd_nvrm_pdev_destroy(struct nvkmd_pdev *_pdev)
 {
    struct nvkmd_nvrm_pdev *pdev = nvkmd_nvrm_pdev(_pdev);
+
+   struct NvRmApi rm;
+   nvkmd_nvrm_dev_api_ctl(pdev, &rm);
+
+   nvRmApiFree(&rm, pdev->hVaSpace);
+   nvRmApiUnmapMemory(&rm, pdev->hSubdevice, pdev->hUsermode, 0, &pdev->usermodeMap);
+   nvRmApiFree(&rm, pdev->hUsermode);
+   nvRmApiFree(&rm, pdev->hSubdevice);
+   nvRmApiFree(&rm, pdev->hDevice);
+
+   close(pdev->devFd);
+   close(pdev->ctlFd);
+   free(pdev->devName);
 
    FREE(pdev);
 }

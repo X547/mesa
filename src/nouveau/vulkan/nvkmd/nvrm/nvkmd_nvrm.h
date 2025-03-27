@@ -25,6 +25,19 @@ struct nvkmd_nvrm_pdev {
 
    struct vk_sync_type syncobj_sync_type;
    const struct vk_sync_type *sync_types[2];
+
+   char *devName;
+   int ctlFd;
+   int devFd;
+   NvHandle hClient;
+   NvHandle hDevice;
+   NvHandle hSubdevice;
+   NvHandle hUsermode;
+   struct NvRmApiMapping usermodeMap;
+   NvHandle hVaSpace;
+   struct NV2080_CTRL_FB_GET_SEMAPHORE_SURFACE_LAYOUT_PARAMS semSurfLayout;
+
+   uint32_t *class_list;
 };
 
 NVKMD_DECL_SUBCLASS(pdev, nvrm);
@@ -36,16 +49,6 @@ VkResult nvkmd_nvrm_try_create_pdev(struct _drmDevice *drm_device,
 
 struct nvkmd_nvrm_dev {
    struct nvkmd_dev base;
-   char *devName;
-   int ctlFd;
-   int devFd;
-   NvHandle hClient;
-   NvHandle hDevice;
-   NvHandle hSubdevice;
-   NvHandle hUsermode;
-   struct NvRmApiMapping usermodeMap;
-   NvHandle hVaSpace;
-   struct NV2080_CTRL_FB_GET_SEMAPHORE_SURFACE_LAYOUT_PARAMS semSurfLayout;
 };
 
 NVKMD_DECL_SUBCLASS(dev, nvrm);
@@ -164,18 +167,18 @@ nvkmd_nvrm_sync_get_type(struct nvkmd_nvrm_pdev *pdev);
 
 
 static inline void
-nvkmd_nvrm_dev_api_dev(struct nvkmd_nvrm_dev *dev, struct NvRmApi *rm)
+nvkmd_nvrm_dev_api_dev(struct nvkmd_nvrm_pdev *pdev, struct NvRmApi *rm)
 {
-   rm->fd = dev->ctlFd;
-   rm->hClient = dev->hClient;
-   rm->nodeName = dev->devName;
+   rm->fd = pdev->ctlFd;
+   rm->hClient = pdev->hClient;
+   rm->nodeName = pdev->devName;
 }
 
 static inline void
-nvkmd_nvrm_dev_api_ctl(struct nvkmd_nvrm_dev *dev, struct NvRmApi *rm)
+nvkmd_nvrm_dev_api_ctl(struct nvkmd_nvrm_pdev *pdev, struct NvRmApi *rm)
 {
-   rm->fd = dev->ctlFd;
-   rm->hClient = dev->hClient;
+   rm->fd = pdev->ctlFd;
+   rm->hClient = pdev->hClient;
    rm->nodeName = "/dev/nvidiactl";
 }
 
