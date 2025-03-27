@@ -5,6 +5,8 @@
 
 #include "nvkmd_nvrm.h"
 
+#include <stdlib.h>
+
 #include "util/os_misc.h"
 #include "util/u_memory.h"
 #include "vk_log.h"
@@ -22,6 +24,25 @@
 #include "class/cla140.h" // KEPLER_INLINE_TO_MEMORY_B
 #include "class/clc5c0.h" // TURING_COMPUTE_A
 
+#include "ctrl/ctrl0080/ctrl0080gr.h" // NV0080_CTRL_GR_GET_INFO_V2
+#include "ctrl/ctrl0080/ctrl0080gpu.h" // NV0080_CTRL_CMD_GPU_GET_CLASSLIST_V2
+#include "ctrl/ctrl2080/ctrl2080gr.h" // NV2080_CTRL_CMD_GR_GET_GPC_MASK
+#include "ctrl/ctrl2080/ctrl2080mc.h" // NV2080_CTRL_CMD_MC_GET_ARCH_INFO
+#include "ctrl/ctrl2080/ctrl2080gpu.h" // NV2080_CTRL_CMD_GPU_GET_NAME_STRING
+
+
+static int
+compare_uint32(const void* a, const void* b)
+{
+	uint32_t int_a = *((uint32_t*)a);
+	uint32_t int_b = *((uint32_t*)b);
+
+	if (int_a == int_b)
+		return 0;
+	else if (int_a < int_b)
+		return -1;
+	return 1;
+}
 
 static VkResult
 nvkmd_nvrm_create_pdev(struct vk_object_base *log_obj,
@@ -55,7 +76,7 @@ nvkmd_nvrm_create_pdev(struct vk_object_base *log_obj,
    nvkmd_nvrm_dev_api_dev(pdev, &devRm);
 
    NV0080_ALLOC_PARAMETERS ap0080 = {.deviceId = 0, .hClientShare = pdev->hClient};
-	
+
    nvRmApiAlloc(&rm, pdev->hClient, &pdev->hDevice, NV01_DEVICE_0, &ap0080);
    nvRmApiAlloc(&rm, pdev->hDevice, &pdev->hSubdevice, NV20_SUBDEVICE_0, NULL);
    nvRmApiAlloc(&rm, pdev->hSubdevice, &pdev->hUsermode, TURING_USERMODE_A, NULL);
@@ -66,11 +87,31 @@ nvkmd_nvrm_create_pdev(struct vk_object_base *log_obj,
    nvRmApiAlloc(&rm, pdev->hDevice, &pdev->hVaSpace, FERMI_VASPACE_A, &vaSpaceParams);
    nvRmApiControl(&rm, pdev->hSubdevice, NV2080_CTRL_CMD_FB_GET_SEMAPHORE_SURFACE_LAYOUT, &pdev->semSurfLayout, sizeof(pdev->semSurfLayout));
 
+
+   NV2080_CTRL_MC_GET_ARCH_INFO_PARAMS archInfoParams = {};
+   nvRmApiControl(&rm, pdev->hSubdevice, NV2080_CTRL_CMD_MC_GET_ARCH_INFO, &archInfoParams, sizeof(archInfoParams));
+
+   NV2080_CTRL_GPU_GET_NAME_STRING_PARAMS getNameParams = {
+      .gpuNameStringFlags = NV2080_CTRL_GPU_GET_NAME_STRING_FLAGS_TYPE_ASCII,
+   };
+   nvRmApiControl(&rm, pdev->hSubdevice, NV2080_CTRL_CMD_GPU_GET_NAME_STRING, &getNameParams, sizeof(getNameParams));
+
+   NV0080_CTRL_GPU_GET_CLASSLIST_V2_PARAMS classListParams = {};
+   nvRmApiControl(&rm, pdev->hSubdevice, NV0080_CTRL_CMD_GPU_GET_CLASSLIST_V2, &classListParams, sizeof(classListParams));
+
+   pdev->numClasses = classListParams.numClasses;
+   pdev->classList = calloc(classListParams.numClasses, sizeof(uint32_t));
+   if (pdev->classList == NULL) {
+   	nvkmd_pdev_destroy(&pdev->base);
+      return vk_error(log_obj, VK_ERROR_OUT_OF_HOST_MEMORY);
+   }
+   memcpy(pdev->classList, &classListParams.classList, classListParams.numClasses * sizeof(uint32_t));
+   qsort(pdev->classList, classListParams.numClasses, sizeof(uint32_t), compare_uint32);
+
    pdev->base.dev_info = (struct nv_device_info) {
     .type = NV_DEVICE_TYPE_DIS,
     .device_id = 0x1ff2, // PCI device ID
-    .chipset = 0x167, // NV2080_CTRL_MC_GET_ARCH_INFO_PARAMS, params.architecture | params.implementation
-    .device_name = "NVIDIA T400 4GB",
+    .chipset = archInfoParams.architecture | archInfoParams.implementation,
     .chipset_name = "TU117",
     .pci = {
         .domain = 0,
@@ -92,6 +133,10 @@ nvkmd_nvrm_create_pdev(struct vk_object_base *log_obj,
     .vram_size_B = 0x100000000, //   4 GB
     .bar_size_B  =  0x10000000  // 256 MB
    };
+
+   // TODO: bounds check
+   strcpy(pdev->base.dev_info.device_name, getNameParams.gpuNameString.ascii);
+
    pdev->base.kmd_info.has_alloc_tiled = true;
 
    /* Nouveau uses the OS page size for all pages, regardless of whether they

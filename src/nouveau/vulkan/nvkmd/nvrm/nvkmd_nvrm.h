@@ -37,7 +37,8 @@ struct nvkmd_nvrm_pdev {
    NvHandle hVaSpace;
    struct NV2080_CTRL_FB_GET_SEMAPHORE_SURFACE_LAYOUT_PARAMS semSurfLayout;
 
-   uint32_t *class_list;
+   uint32_t numClasses;
+   uint32_t *classList;
 };
 
 NVKMD_DECL_SUBCLASS(pdev, nvrm);
