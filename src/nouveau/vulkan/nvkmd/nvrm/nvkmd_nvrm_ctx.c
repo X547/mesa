@@ -47,7 +47,7 @@ nvkmd_nvrm_create_exec_ctx(struct nvkmd_dev *_dev,
 
    ctx->base.ops = &nvkmd_nvrm_exec_ctx_ops;
    ctx->base.dev = &dev->base;
-   
+
    ctx->osEvent = -1;
 
    vkRes = nvkmd_dev_alloc_mapped_mem(_dev, log_obj,  0x1000,  0x1000, NVKMD_MEM_GART, NVKMD_MEM_MAP_RDWR,  &ctx->notifier);
@@ -64,7 +64,7 @@ nvkmd_nvrm_create_exec_ctx(struct nvkmd_dev *_dev,
    	goto error1;
 
 	NV_CONTEXT_DMA_ALLOCATION_PARAMS ctxDmaParams = {
-		.flags = 
+		.flags =
 			DRF_DEF(OS03, _FLAGS, _MAPPING, _KERNEL) |
 			DRF_DEF(OS03, _FLAGS, _HASH_TABLE, _DISABLE),
 
@@ -89,19 +89,19 @@ nvkmd_nvrm_create_exec_ctx(struct nvkmd_dev *_dev,
 		.userdOffset   = {0},
 		.engineType    = engineType,
 	};
-   nvRes = nvRmApiAlloc(&rm, pdev->hDevice, &ctx->hChannel, TURING_CHANNEL_GPFIFO_A, &createChannelParams);
+   nvRes = nvRmApiAlloc(&rm, pdev->hDevice, &ctx->hChannel, pdev->channelClass, &createChannelParams);
    if (nvRes != NV_OK) {
       vkRes = VK_ERROR_UNKNOWN;
       goto error1;
    }
-   
+
 	NVA06F_CTRL_BIND_PARAMS bindParams = {.engineType = engineType};
 	nvRes = nvRmApiControl(&rm, ctx->hChannel, NVA06F_CTRL_CMD_BIND, &bindParams, sizeof(bindParams));
    if (nvRes != NV_OK) {
       vkRes = VK_ERROR_UNKNOWN;
       goto error1;
    }
-	
+
 	NVA06F_CTRL_GPFIFO_SCHEDULE_PARAMS scheduleParams = {.bEnable = NV_TRUE};
 	nvRes = nvRmApiControl(&rm, ctx->hChannel, NVA06F_CTRL_CMD_GPFIFO_SCHEDULE, &scheduleParams, sizeof(scheduleParams));
    if (nvRes != NV_OK) {
@@ -112,7 +112,7 @@ nvkmd_nvrm_create_exec_ctx(struct nvkmd_dev *_dev,
 	NVC36F_CTRL_GPFIFO_SET_WORK_SUBMIT_TOKEN_NOTIF_INDEX_PARAMS notifParams = {
 		.index = NV_CHANNELGPFIFO_NOTIFICATION_TYPE_WORK_SUBMIT_TOKEN
 	};
-	nvRes = nvRmApiControl(&rm, 
+	nvRes = nvRmApiControl(&rm,
 		ctx->hChannel,
 		NVC36F_CTRL_CMD_GPFIFO_SET_WORK_SUBMIT_TOKEN_NOTIF_INDEX,
 		&notifParams,
@@ -173,7 +173,7 @@ nvkmd_nvrm_create_exec_ctx(struct nvkmd_dev *_dev,
       vkRes = VK_ERROR_UNKNOWN;
       goto error1;
    }
-   
+
    nvRes = nvRmSemSurfCreate(dev, 0x1000, &ctx->semSurf);
    if (nvRes != NV_OK) {
       vkRes = VK_ERROR_UNKNOWN;
@@ -203,7 +203,7 @@ nvkmd_nvrm_exec_ctx_destroy(struct nvkmd_ctx *_ctx)
    struct nvkmd_nvrm_pdev *pdev = nvkmd_nvrm_pdev(dev->base.pdev);
    struct NvRmApi rm;
    nvkmd_nvrm_dev_api_ctl(pdev, &rm);
-   
+
    if (ctx->semSurf != NULL)
       nvRmSemSurfDestroy(ctx->semSurf);
    if (ctx->osEvent >= 0)
@@ -292,7 +292,7 @@ nvkmd_nvrm_exec_ctx_exec(struct nvkmd_ctx *_ctx,
    nv_push_init(&p, ctx->cmdBuf->map, 0x10000 / 4);
 
    uint64_t semAdrGpu = ctx->semSurf->memory->va->addr;
-	
+
 	bool progressTrackerWFI = true;
 	*p.end++ =
 		DRF_DEF(A16F, _DMA, _SEC_OP,            _INC_METHOD) |
@@ -353,7 +353,7 @@ nvkmd_nvrm_exec_ctx_exec(struct nvkmd_ctx *_ctx,
 
    volatile NvU32 *doorbell = (void*)((NvU8*)pdev->usermodeMap.address + NVC361_NOTIFY_CHANNEL_PENDING);
    *doorbell = submitTokenNotifier->info32;
-   
+
    for (;;) {
       uint64_t rSeq = nvRmSemSurfGetValue(ctx->semSurf, 0);
       if (rSeq == ctx->wSeq) {
@@ -373,7 +373,7 @@ nvkmd_nvrm_exec_ctx_exec(struct nvkmd_ctx *_ctx,
       fprintf(stderr, "GPPut: %" PRIu32 "\n", userD->GPPut);
 #endif
    }
-   
+
    ctx->gpGet = ctx->gpPut;
 
    return VK_SUCCESS;

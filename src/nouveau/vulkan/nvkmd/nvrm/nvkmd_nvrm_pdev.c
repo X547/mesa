@@ -18,17 +18,167 @@
 #include "class/cl90f1.h" // FERMI_VASPACE_A
 #include "class/clc461.h" // TURING_USERMODE_A
 
-#include "class/clc5b5.h" // TURING_DMA_COPY_A
-#include "class/cl902d.h" // FERMI_TWOD_A
-#include "class/clc597.h" // TURING_A
-#include "class/cla140.h" // KEPLER_INLINE_TO_MEMORY_B
-#include "class/clc5c0.h" // TURING_COMPUTE_A
+// CHANNEL_GPFIFO
+#include "class/cl506f.h"
+#include "class/cl906f.h"
+#include "class/cla06f.h"
+#include "class/cla16f.h"
+#include "class/cla26f.h"
+#include "class/clb06f.h"
+#include "class/clc06f.h"
+#include "class/clc36f.h"
+#include "class/clc46f.h"
+#include "class/clc56f.h"
+#include "class/clc86f.h"
+#include "class/clc96f.h"
+#include "class/clca6f.h"
+
+// DMA_COPY
+#include "class/cla0b5.h"
+#include "class/clb0b5.h"
+#include "class/clc0b5.h"
+#include "class/clc1b5.h"
+#include "class/clc3b5.h"
+#include "class/clc5b5.h"
+#include "class/clc6b5.h"
+#include "class/clc7b5.h"
+#include "class/clc8b5.h"
+#include "class/clc9b5.h"
+#include "class/clcab5.h"
+
+// FERMI_TWOD_A
+#include "class/cl902d.h"
+
+// 3D
+#include "class/cl9097.h"
+#include "class/cla097.h"
+#include "class/cla197.h"
+#include "class/clb097.h"
+#include "class/clb197.h"
+#include "class/clc097.h"
+#include "class/clc197.h"
+#include "class/clc397.h"
+#include "class/clc597.h"
+#include "class/clc697.h"
+#include "class/clc797.h"
+#include "class/clc997.h"
+#include "class/clcb97.h"
+#include "class/clcd97.h"
+#include "class/clce97.h"
+
+// INLINE_TO_MEMORY
+#include "class/cla140.h"
+#include "class/clcd40.h"
+
+// COMPUTE
+#include "class/cla0c0.h"
+#include "class/cla1c0.h"
+#include "class/clb0c0.h"
+#include "class/clb1c0.h"
+#include "class/clc0c0.h"
+#include "class/clc1c0.h"
+#include "class/clc3c0.h"
+#include "class/clc4c0.h"
+#include "class/clc5c0.h"
+#include "class/clc6c0.h"
+#include "class/clc7c0.h"
+#include "class/clc9c0.h"
+#include "class/clcbc0.h"
+#include "class/clcdc0.h"
+#include "class/clcec0.h"
+
+// USERMODE
+#include "class/clc361.h"
+#include "class/clc461.h"
+#include "class/clc661.h"
 
 #include "ctrl/ctrl0080/ctrl0080gr.h" // NV0080_CTRL_GR_GET_INFO_V2
 #include "ctrl/ctrl0080/ctrl0080gpu.h" // NV0080_CTRL_CMD_GPU_GET_CLASSLIST_V2
 #include "ctrl/ctrl2080/ctrl2080gr.h" // NV2080_CTRL_CMD_GR_GET_GPC_MASK
 #include "ctrl/ctrl2080/ctrl2080mc.h" // NV2080_CTRL_CMD_MC_GET_ARCH_INFO
 #include "ctrl/ctrl2080/ctrl2080gpu.h" // NV2080_CTRL_CMD_GPU_GET_NAME_STRING
+
+
+static uint32_t sChannelClasses[] = {
+	BLACKWELL_CHANNEL_GPFIFO_B,
+	BLACKWELL_CHANNEL_GPFIFO_A,
+	HOPPER_CHANNEL_GPFIFO_A,
+	AMPERE_CHANNEL_GPFIFO_A,
+	TURING_CHANNEL_GPFIFO_A,
+	VOLTA_CHANNEL_GPFIFO_A,
+	PASCAL_CHANNEL_GPFIFO_A,
+	MAXWELL_CHANNEL_GPFIFO_A,
+	KEPLER_CHANNEL_GPFIFO_C,
+	KEPLER_CHANNEL_GPFIFO_B,
+	KEPLER_CHANNEL_GPFIFO_A,
+	GF100_CHANNEL_GPFIFO,
+	NV50_CHANNEL_GPFIFO
+};
+
+static uint32_t sSubchannelCopyClasses[] = {
+	BLACKWELL_DMA_COPY_B,
+	BLACKWELL_DMA_COPY_A,
+	HOPPER_DMA_COPY_A,
+	AMPERE_DMA_COPY_B,
+	AMPERE_DMA_COPY_A,
+	TURING_DMA_COPY_A,
+	VOLTA_DMA_COPY_A,
+	PASCAL_DMA_COPY_B,
+	PASCAL_DMA_COPY_A,
+	MAXWELL_DMA_COPY_A,
+	KEPLER_DMA_COPY_A
+};
+
+static uint32_t sSubchannelEng2dClasses[] = {
+	FERMI_TWOD_A,
+};
+
+static uint32_t sSubchannelEng3dClasses[] = {
+	BLACKWELL_B,
+	BLACKWELL_A,
+	HOPPER_A,
+	ADA_A,
+	AMPERE_B,
+	AMPERE_A,
+	TURING_A,
+	VOLTA_A,
+	PASCAL_B,
+	PASCAL_A,
+	MAXWELL_B,
+	MAXWELL_A,
+	KEPLER_B,
+	KEPLER_A,
+	FERMI_A,
+};
+
+static uint32_t sSubchannelM2mfClasses[] = {
+	BLACKWELL_INLINE_TO_MEMORY_A,
+	KEPLER_INLINE_TO_MEMORY_B,
+};
+
+static uint32_t sSubchannelComputeClasses[] = {
+	BLACKWELL_COMPUTE_B,
+	BLACKWELL_COMPUTE_A,
+	HOPPER_COMPUTE_A,
+	ADA_COMPUTE_A,
+	AMPERE_COMPUTE_B,
+	AMPERE_COMPUTE_A,
+	TURING_COMPUTE_A,
+	VOLTA_COMPUTE_B,
+	VOLTA_COMPUTE_A,
+	PASCAL_COMPUTE_B,
+	PASCAL_COMPUTE_A,
+	MAXWELL_COMPUTE_B,
+	MAXWELL_COMPUTE_A,
+	KEPLER_COMPUTE_B,
+	KEPLER_COMPUTE_A,
+};
+
+static uint32_t sUsermodeClasses[] = {
+//	HOPPER_USERMODE_A, // need NV_HOPPER_USERMODE_A_PARAMS
+	TURING_USERMODE_A,
+	VOLTA_USERMODE_A,
+};
 
 
 static int
@@ -42,6 +192,25 @@ compare_uint32(const void* a, const void* b)
 	else if (int_a < int_b)
 		return -1;
 	return 1;
+}
+
+
+static bool
+nvkmd_nvrm_pdev_is_class_supported(struct nvkmd_nvrm_pdev *pdev, uint32_t hClass)
+{
+	uint32_t *hClassPtr = (uint32_t*)bsearch(&hClass, pdev->classList, pdev->numClasses, sizeof(uint32_t), compare_uint32);
+	return hClassPtr != NULL;
+}
+
+static uint32_t
+nvkmd_nvrm_pdev_find_supported_class(struct nvkmd_nvrm_pdev *pdev, uint32_t numCandidates, uint32_t *candidates)
+{
+	for (uint32_t i = 0; i < numCandidates; i++) {
+		uint32_t candidate = candidates[i];
+		if (nvkmd_nvrm_pdev_is_class_supported(pdev, candidate))
+			return candidate;
+	}
+	return 0;
 }
 
 static VkResult
@@ -79,12 +248,6 @@ nvkmd_nvrm_create_pdev(struct vk_object_base *log_obj,
 
    nvRmApiAlloc(&rm, pdev->hClient, &pdev->hDevice, NV01_DEVICE_0, &ap0080);
    nvRmApiAlloc(&rm, pdev->hDevice, &pdev->hSubdevice, NV20_SUBDEVICE_0, NULL);
-   nvRmApiAlloc(&rm, pdev->hSubdevice, &pdev->hUsermode, TURING_USERMODE_A, NULL);
-   nvRmApiMapMemory(&devRm, pdev->hSubdevice, pdev->hUsermode, 0, 4096, 0, &pdev->usermodeMap);
-   NV_VASPACE_ALLOCATION_PARAMETERS vaSpaceParams = {
-      .flags = NV_VASPACE_ALLOCATION_FLAGS_RETRY_PTE_ALLOC_IN_SYS,
-   };
-   nvRmApiAlloc(&rm, pdev->hDevice, &pdev->hVaSpace, FERMI_VASPACE_A, &vaSpaceParams);
    nvRmApiControl(&rm, pdev->hSubdevice, NV2080_CTRL_CMD_FB_GET_SEMAPHORE_SURFACE_LAYOUT, &pdev->semSurfLayout, sizeof(pdev->semSurfLayout));
 
 
@@ -97,7 +260,7 @@ nvkmd_nvrm_create_pdev(struct vk_object_base *log_obj,
    nvRmApiControl(&rm, pdev->hSubdevice, NV2080_CTRL_CMD_GPU_GET_NAME_STRING, &getNameParams, sizeof(getNameParams));
 
    NV0080_CTRL_GPU_GET_CLASSLIST_V2_PARAMS classListParams = {};
-   nvRmApiControl(&rm, pdev->hSubdevice, NV0080_CTRL_CMD_GPU_GET_CLASSLIST_V2, &classListParams, sizeof(classListParams));
+   nvRmApiControl(&rm, pdev->hDevice, NV0080_CTRL_CMD_GPU_GET_CLASSLIST_V2, &classListParams, sizeof(classListParams));
 
    pdev->numClasses = classListParams.numClasses;
    pdev->classList = calloc(classListParams.numClasses, sizeof(uint32_t));
@@ -108,11 +271,37 @@ nvkmd_nvrm_create_pdev(struct vk_object_base *log_obj,
    memcpy(pdev->classList, &classListParams.classList, classListParams.numClasses * sizeof(uint32_t));
    qsort(pdev->classList, classListParams.numClasses, sizeof(uint32_t), compare_uint32);
 
+	NV0080_CTRL_GR_GET_INFO_V2_PARAMS grGetInfoParams = {
+		.grInfoListSize = 3,
+		.grInfoList = {
+			{.index = NV0080_CTRL_GR_INFO_INDEX_SM_VERSION},
+			{.index = NV0080_CTRL_GR_INFO_INDEX_MAX_WARPS_PER_SM},
+			{.index = NV0080_CTRL_GR_INFO_INDEX_LITTER_NUM_SM_PER_TPC},
+		},
+	};
+   nvRmApiControl(&rm, pdev->hDevice, NV0080_CTRL_CMD_GR_GET_INFO_V2, &grGetInfoParams, sizeof(grGetInfoParams));
+   uint32_t smVersion = grGetInfoParams.grInfoList[0].data;
+   uint32_t maxWarpsPerSm = grGetInfoParams.grInfoList[1].data;
+   uint32_t litterNumSmPerTpc = grGetInfoParams.grInfoList[2].data;
+
+   uint32_t gpcCount = 0;
+   uint32_t tpcCount = 0;
+   NV2080_CTRL_GR_GET_GPC_MASK_PARAMS gpcMaskParams = {};
+   nvRmApiControl(&rm, pdev->hSubdevice, NV2080_CTRL_CMD_GR_GET_GPC_MASK, &gpcMaskParams, sizeof(gpcMaskParams));
+	for (uint32_t gpcId = 0; gpcId < 32; gpcId++) {
+		if ((1U << gpcId) & gpcMaskParams.gpcMask) {
+			gpcCount++;
+			NV2080_CTRL_GR_GET_TPC_MASK_PARAMS tpcMaskParams = {.gpcId = gpcId};
+		   nvRmApiControl(&rm, pdev->hSubdevice, NV2080_CTRL_CMD_GR_GET_TPC_MASK, &tpcMaskParams, sizeof(tpcMaskParams));
+			tpcCount += util_bitcount(tpcMaskParams.tpcMask);
+		}
+	}
+
    pdev->base.dev_info = (struct nv_device_info) {
     .type = NV_DEVICE_TYPE_DIS,
-    .device_id = 0x1ff2, // PCI device ID
+    .device_id = 0x1ff2, // TODO: PCI device ID
     .chipset = archInfoParams.architecture | archInfoParams.implementation,
-    .chipset_name = "TU117",
+    .chipset_name = "TU117", // TODO
     .pci = {
         .domain = 0,
         .bus = 1,
@@ -120,16 +309,16 @@ nvkmd_nvrm_create_pdev(struct vk_object_base *log_obj,
         .func = 0,
         .revision_id = 255
     },
-    .sm = 75, // sm_for_chipset(device->info.chipset), NV0080_CTRL_GR_INFO_INDEX_SM_VERSION
-    .gpc_count = 1, // NV2080_CTRL_CMD_GR_GET_GPC_MASK
-    .tpc_count = 3, // NV2080_CTRL_CMD_GR_GET_TPC_MASK
-    .mp_per_tpc = 2, // mp_per_tpc_for_chipset(device->info.chipset), NV0080_CTRL_CMD_GR_GET_INFO_V2(NV0080_CTRL_GR_INFO_INDEX_LITTER_NUM_SM_PER_TPC)
-    .max_warps_per_mp = 32, // NV0080_CTRL_GR_INFO_INDEX_MAX_WARPS_PER_SM
-    .cls_copy    = TURING_DMA_COPY_A,
-    .cls_eng2d   = FERMI_TWOD_A,
-    .cls_eng3d   = TURING_A,
-    .cls_m2mf    = KEPLER_INLINE_TO_MEMORY_B,
-    .cls_compute = TURING_COMPUTE_A,
+    .sm = (smVersion >> 8) * 10 + (smVersion & 0xf),
+    .gpc_count = gpcCount,
+    .tpc_count = tpcCount,
+    .mp_per_tpc = litterNumSmPerTpc,
+    .max_warps_per_mp = maxWarpsPerSm,
+    .cls_copy    = nvkmd_nvrm_pdev_find_supported_class(pdev, ARRAY_SIZE(sSubchannelCopyClasses), sSubchannelCopyClasses),
+    .cls_eng2d   = nvkmd_nvrm_pdev_find_supported_class(pdev, ARRAY_SIZE(sSubchannelEng2dClasses), sSubchannelEng2dClasses),
+    .cls_eng3d   = nvkmd_nvrm_pdev_find_supported_class(pdev, ARRAY_SIZE(sSubchannelEng3dClasses), sSubchannelEng3dClasses),
+    .cls_m2mf    = nvkmd_nvrm_pdev_find_supported_class(pdev, ARRAY_SIZE(sSubchannelM2mfClasses), sSubchannelM2mfClasses),
+    .cls_compute = nvkmd_nvrm_pdev_find_supported_class(pdev, ARRAY_SIZE(sSubchannelComputeClasses), sSubchannelComputeClasses),
     .vram_size_B = 0x100000000, //   4 GB
     .bar_size_B  =  0x10000000  // 256 MB
    };
@@ -138,6 +327,17 @@ nvkmd_nvrm_create_pdev(struct vk_object_base *log_obj,
    strcpy(pdev->base.dev_info.device_name, getNameParams.gpuNameString.ascii);
 
    pdev->base.kmd_info.has_alloc_tiled = true;
+
+   pdev->channelClass = nvkmd_nvrm_pdev_find_supported_class(pdev, ARRAY_SIZE(sChannelClasses), sChannelClasses);
+   uint32_t usermodeClass = nvkmd_nvrm_pdev_find_supported_class(pdev, ARRAY_SIZE(sUsermodeClasses), sUsermodeClasses);
+
+   nvRmApiAlloc(&rm, pdev->hSubdevice, &pdev->hUsermode, usermodeClass, NULL);
+   nvRmApiMapMemory(&devRm, pdev->hSubdevice, pdev->hUsermode, 0, 4096, 0, &pdev->usermodeMap);
+   NV_VASPACE_ALLOCATION_PARAMETERS vaSpaceParams = {
+      .flags = NV_VASPACE_ALLOCATION_FLAGS_RETRY_PTE_ALLOC_IN_SYS,
+   };
+   nvRmApiAlloc(&rm, pdev->hDevice, &pdev->hVaSpace, FERMI_VASPACE_A, &vaSpaceParams);
+
 
    /* Nouveau uses the OS page size for all pages, regardless of whether they
     * come from VRAM or system RAM.
@@ -190,6 +390,8 @@ nvkmd_nvrm_pdev_destroy(struct nvkmd_pdev *_pdev)
    nvRmApiFree(&rm, pdev->hUsermode);
    nvRmApiFree(&rm, pdev->hSubdevice);
    nvRmApiFree(&rm, pdev->hDevice);
+
+   free(pdev->classList);
 
    close(pdev->devFd);
    close(pdev->ctlFd);
