@@ -36,6 +36,7 @@ struct nvkmd_nvrm_pdev {
    struct NvRmApiMapping usermodeMap;
    NvHandle hVaSpace;
    struct NV2080_CTRL_FB_GET_SEMAPHORE_SURFACE_LAYOUT_PARAMS semSurfLayout;
+   uint32_t channelClass;
 
    uint32_t numClasses;
    uint32_t *classList;
