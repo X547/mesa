@@ -8,6 +8,7 @@
 #include "vk_log.h"
 
 #include "util/u_memory.h"
+#include "util/hash_table.h"
 
 #include "class/cl003e.h" // NV01_MEMORY_SYSTEM
 #include "class/cl0040.h" // NV01_MEMORY_LOCAL_USER
@@ -184,15 +185,24 @@ nvkmd_nvrm_mem_map(struct nvkmd_mem *_mem,
       nvkmd_nvrm_dev_api_dev(pdev, &rm);
    }
 
-   NvRmApiMapping mapping;
-   memset(&mapping, 0, sizeof(mapping));
-   NV_STATUS nvRes = nvRmApiMapMemory(&rm, pdev->hSubdevice, mem->hMemoryPhys, 0, mem->base.size_B, 0, &mapping);
+   NvRmApiMapping *mapping = CALLOC_STRUCT(NvRmApiMapping);
+   if (mapping == NULL)
+      return vk_error(log_obj, VK_ERROR_OUT_OF_HOST_MEMORY);
+
+   NV_STATUS nvRes = nvRmApiMapMemory(&rm, pdev->hSubdevice, mem->hMemoryPhys, 0, mem->base.size_B, 0, mapping);
    if (nvRes != NV_OK) {
       fprintf(stderr, "[!] nvRes: %#x\n", nvRes);
+      free(mapping);
       return VK_ERROR_UNKNOWN;
    }
 
-   *map_out = mapping.address;
+   if (_mesa_hash_table_insert(dev->mappings, mapping->address, mapping) == NULL) {
+   	nvRmApiUnmapMemory(&rm, pdev->hSubdevice, mem->hMemoryPhys, 0, mapping);
+      free(mapping);
+      return vk_error(log_obj, VK_ERROR_OUT_OF_HOST_MEMORY);
+   }
+
+   *map_out = mapping->address;
    return VK_SUCCESS;
 }
 
@@ -212,17 +222,19 @@ nvkmd_nvrm_mem_unmap(struct nvkmd_mem *_mem,
       nvkmd_nvrm_dev_api_dev(pdev, &rm);
    }
 
-   NvRmApiMapping mapping;
-   mapping.stubLinearAddress = (void*)(uintptr_t)(-1);
-   mapping.address = map;
-#ifdef __HAIKU__
-   mapping.area = area_for(map);
-   if (mapping.area < 0)
-      abort();
-#else
-   mapping.size = mem->base.size_B;
-#endif
-   nvRmApiUnmapMemory(&rm, pdev->hSubdevice, mem->hMemoryPhys, 0, &mapping);
+   struct hash_entry *ent = _mesa_hash_table_search(dev->mappings, map);
+   if (ent == NULL) {
+      fprintf(stderr, "[!] ent == NULL\n");
+      return;
+   }
+   NvRmApiMapping *mapping = ent->data;
+
+   NV_STATUS nvRes = nvRmApiUnmapMemory(&rm, pdev->hSubdevice, mem->hMemoryPhys, 0, mapping);
+   if (nvRes != NV_OK) {
+      fprintf(stderr, "[!] nvRes: %#x\n", nvRes);
+   }
+
+   free(mapping);
 }
 
 static VkResult
@@ -232,6 +244,8 @@ nvkmd_nvrm_mem_overmap(struct nvkmd_mem *_mem,
                           void *map)
 {
    struct nvkmd_nvrm_mem *mem = nvkmd_nvrm_mem(_mem);
+
+   fprintf(stderr, "nvkmd_nvrm_mem_unmap(%#x)\n", mem->hMemoryPhys);
 
    return VK_ERROR_UNKNOWN;
 }
