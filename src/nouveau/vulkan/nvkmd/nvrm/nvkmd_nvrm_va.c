@@ -95,7 +95,7 @@ nvkmd_nvrm_va_free(struct nvkmd_va *_va)
 
    struct NvRmApi rm;
    nvkmd_nvrm_dev_api_ctl(pdev, &rm);
-   
+
    nvRmApiFree(&rm, va->hMemoryVirt);
 
    FREE(va);
@@ -116,7 +116,7 @@ nvkmd_nvrm_va_bind_mem(struct nvkmd_va *_va,
 
    struct NvRmApi rm;
    nvkmd_nvrm_dev_api_ctl(pdev, &rm);
-   
+
    NvU32 gpuMapFlags = 0;
    gpuMapFlags |= DRF_DEF(OS46, _FLAGS, _PAGE_KIND, _VIRTUAL);
    if (mem->isSystemMem) {

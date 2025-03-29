@@ -51,6 +51,7 @@ VkResult nvkmd_nvrm_try_create_pdev(struct _drmDevice *drm_device,
 
 struct nvkmd_nvrm_dev {
    struct nvkmd_dev base;
+   struct hash_table *mappings;
 };
 
 NVKMD_DECL_SUBCLASS(dev, nvrm);
