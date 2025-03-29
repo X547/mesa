@@ -9,21 +9,8 @@
 #include "nv_escape.h"
 #include "nv-unix-nvos-params-wrappers.h"
 #include "nvstatus.h"
-
-
 #ifdef __HAIKU__
-enum {
-	NV_HAIKU_GET_COOKIE = 0,
-	NV_HAIKU_MAP,
-};
-
-
-typedef struct {
-	char name[B_OS_NAME_LENGTH];
-	void *address;
-	uint32 addressSpec;
-	uint32 protection;
-} nv_haiku_map_params;
+#include "nv-haiku.h"
 #endif
 
 
@@ -31,7 +18,11 @@ static int nvRmIoctl(int fd, NvU32 cmd, void *pParams, NvU32 paramsSize)
 {
 	int res;
 	do {
+#ifdef __HAIKU__
+		res = ioctl(fd, cmd + NV_HAIKU_BASE, pParams, paramsSize);
+#else
 		res = ioctl(fd, _IOC(IOC_INOUT, NV_IOCTL_MAGIC, cmd, paramsSize), pParams);
+#endif
 		if (res < 0) {
 			res = errno;
 		}
