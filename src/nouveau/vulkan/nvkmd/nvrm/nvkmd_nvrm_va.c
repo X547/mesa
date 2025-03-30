@@ -59,14 +59,55 @@ nvkmd_nvrm_alloc_va(struct nvkmd_dev *_dev,
 		.alignment = align_B,
 		.hVASpace = pdev->hVaSpace,
 	};
-	if (pte_kind == 0x04) {
-		params.type = NVOS32_TYPE_DEPTH;
-		params.attr |= DRF_DEF(OS32, _ATTR, _DEPTH, _64);
-		params.attr |= DRF_DEF(OS32, _ATTR, _FORMAT, _BLOCK_LINEAR);
-		params.attr |= DRF_DEF(OS32, _ATTR, _Z_TYPE, _FLOAT);
-		params.attr |= DRF_DEF(OS32, _ATTR, _ZS_PACKING, _Z32_X24S8);
-		params.attr |= DRF_DEF(OS32, _ATTR, _COMPR, _NONE);
+	switch (pte_kind) {
+		case 0x1:
+			params.type = NVOS32_TYPE_DEPTH;
+			params.attr |= DRF_DEF(OS32, _ATTR, _DEPTH, _16);
+			params.attr |= DRF_DEF(OS32, _ATTR, _FORMAT, _PITCH);
+			params.attr |= DRF_DEF(OS32, _ATTR, _Z_TYPE, _FIXED);
+			params.attr |= DRF_DEF(OS32, _ATTR, _ZS_PACKING, _Z16);
+			params.attr |= DRF_DEF(OS32, _ATTR, _COMPR, _NONE);
+			break;
+		case 0x2:
+			params.type = NVOS32_TYPE_STENCIL;
+			params.attr |= DRF_DEF(OS32, _ATTR, _DEPTH, _8);
+			params.attr |= DRF_DEF(OS32, _ATTR, _FORMAT, _PITCH);
+			params.attr |= DRF_DEF(OS32, _ATTR, _Z_TYPE, _FIXED);
+			params.attr |= DRF_DEF(OS32, _ATTR, _ZS_PACKING, _S8);
+			params.attr |= DRF_DEF(OS32, _ATTR, _COMPR, _NONE);
+			break;
+		case 0x3:
+			params.type = NVOS32_TYPE_STENCIL;
+			params.attr |= DRF_DEF(OS32, _ATTR, _DEPTH, _32);
+			params.attr |= DRF_DEF(OS32, _ATTR, _FORMAT, _BLOCK_LINEAR);
+			params.attr |= DRF_DEF(OS32, _ATTR, _Z_TYPE, _FIXED);
+			params.attr |= DRF_DEF(OS32, _ATTR, _ZS_PACKING, _S8Z24);
+			params.attr |= DRF_DEF(OS32, _ATTR, _COMPR, _NONE);
+			break;
+		case 0x4:
+			params.type = NVOS32_TYPE_DEPTH;
+			params.attr |= DRF_DEF(OS32, _ATTR, _DEPTH, _64);
+			params.attr |= DRF_DEF(OS32, _ATTR, _FORMAT, _BLOCK_LINEAR);
+			params.attr |= DRF_DEF(OS32, _ATTR, _Z_TYPE, _FLOAT);
+			params.attr |= DRF_DEF(OS32, _ATTR, _ZS_PACKING, _Z32_X24S8);
+			params.attr |= DRF_DEF(OS32, _ATTR, _COMPR, _NONE);
+			break;
+		case 0x5:
+			params.type = NVOS32_TYPE_STENCIL;
+			params.attr |= DRF_DEF(OS32, _ATTR, _DEPTH, _32);
+			params.attr |= DRF_DEF(OS32, _ATTR, _FORMAT, _BLOCK_LINEAR);
+			params.attr |= DRF_DEF(OS32, _ATTR, _Z_TYPE, _FIXED);
+			params.attr |= DRF_DEF(OS32, _ATTR, _ZS_PACKING, _Z24S8);
+			params.attr |= DRF_DEF(OS32, _ATTR, _COMPR, _NONE);
+			break;
+		case 0:
+		case 0x6:
+			break;
+		default:
+			fprintf(stderr, "[!] unsupported pte_kind(%#x)\n", pte_kind);
+			return VK_ERROR_UNKNOWN;
 	}
+
    NV_STATUS nvRes = nvRmApiAlloc(&rm, pdev->hDevice, &hMemoryVirt, NV50_MEMORY_VIRTUAL, &params);
    if (nvRes != NV_OK) {
       fprintf(stderr, "[!] nvRes: %#x\n", nvRes);
