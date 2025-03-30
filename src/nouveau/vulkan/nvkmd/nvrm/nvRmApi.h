@@ -2,6 +2,7 @@
 
 #include "nv.h"
 #include "nvos.h"
+#include "nv-ioctl.h"
 
 #ifdef __HAIKU__
 #include <OS.h>
@@ -35,3 +36,4 @@ NvU32 nvRmApiUnmapMemory(NvRmApi *api, NvU32 hDevice, NvU32 hMemory, NvU32 flags
 NvU32 nvRmApiRegisterFd(NvRmApi *api, int ctlFd);
 NvU32 nvRmApiAllocOsEvent(NvRmApi *api, int fd);
 NvU32 nvRmApiFreeOsEvent(NvRmApi *api, int fd);
+NvU32 nvRmApiCardInfo(NvRmApi *api, nv_ioctl_card_info_t *ci, size_t size);

@@ -237,3 +237,12 @@ NvU32 nvRmApiFreeOsEvent(NvRmApi *api, int fd)
 	}
 	return p.Status;
 }
+
+NvU32 nvRmApiCardInfo(NvRmApi *api, nv_ioctl_card_info_t *ci, size_t size)
+{
+	int ret = nvRmIoctl(api->fd, NV_ESC_CARD_INFO, ci, size);
+	if (ret < 0) {
+		return NV_ERR_GENERIC;
+	}
+	return NV_OK;
+}

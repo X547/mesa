@@ -98,6 +98,8 @@
 #include "ctrl/ctrl2080/ctrl2080mc.h" // NV2080_CTRL_CMD_MC_GET_ARCH_INFO
 #include "ctrl/ctrl2080/ctrl2080gpu.h" // NV2080_CTRL_CMD_GPU_GET_NAME_STRING
 
+#define NV_MAX_GPUS 32
+
 
 static uint32_t sChannelClasses[] = {
 	BLACKWELL_CHANNEL_GPFIFO_B,
@@ -216,6 +218,7 @@ nvkmd_nvrm_pdev_find_supported_class(struct nvkmd_nvrm_pdev *pdev, uint32_t numC
 static VkResult
 nvkmd_nvrm_create_pdev(struct vk_object_base *log_obj,
                        enum nvk_debug debug_flags,
+                       nv_ioctl_card_info_t *ci,
                        struct nvkmd_pdev **pdev_out)
 {
    struct nvkmd_nvrm_pdev *pdev = CALLOC_STRUCT(nvkmd_nvrm_pdev);
@@ -229,7 +232,7 @@ nvkmd_nvrm_create_pdev(struct vk_object_base *log_obj,
    pdev->ctlFd = -1;
    pdev->devFd = -1;
 
-   pdev->devName = strdup("/dev/nvidia0");
+   asprintf(&pdev->devName, "/dev/nvidia%u", ci->minor_number);
    if (pdev->devName == NULL)
       return vk_error(log_obj, VK_ERROR_OUT_OF_HOST_MEMORY);
 
@@ -299,13 +302,13 @@ nvkmd_nvrm_create_pdev(struct vk_object_base *log_obj,
 
    pdev->base.dev_info = (struct nv_device_info) {
     .type = NV_DEVICE_TYPE_DIS,
-    .device_id = 0x1ff2, // TODO: PCI device ID
+    .device_id = ci->pci_info.device_id,
     .chipset = archInfoParams.architecture | archInfoParams.implementation,
     .chipset_name = "TU117", // TODO
     .pci = {
-        .domain = 0,
-        .bus = 1,
-        .dev = 0,
+        .domain = ci->pci_info.domain,
+        .bus = ci->pci_info.bus,
+        .dev = ci->pci_info.slot,
         .func = 0,
         .revision_id = 255
     },
@@ -363,18 +366,48 @@ nvkmd_nvrm_enum_pdev(struct vk_object_base *log_obj,
                      nvkmd_enum_pdev_visitor visitor,
                      void *arg)
 {
-   struct nvkmd_pdev *pdev = NULL;
-   VkResult result;
-   result = nvkmd_nvrm_create_pdev(log_obj, debug_flags, &pdev);
-   if (result != VK_SUCCESS)
-      return result;
+   VkResult result = VK_SUCCESS;
 
-   result = visitor(pdev, arg);
-   if (result != VK_SUCCESS) {
-      return result;
+   int ctlFd = open("/dev/nvidiactl", O_RDWR | O_CLOEXEC);
+   if (ctlFd < 0)
+   	return VK_SUCCESS; // No NVRM driver loaded, so no Nvidia devices.
+
+   struct NvRmApi rm = {
+   	.fd = ctlFd,
+   };
+
+   nv_ioctl_card_info_t cardInfos[NV_MAX_GPUS];
+   NV_STATUS nvRes = nvRmApiCardInfo(&rm, cardInfos, sizeof(cardInfos));
+   if (nvRes != NV_OK) {
+      fprintf(stderr, "[!] nvRes: %#x\n", nvRes);
+      result = VK_ERROR_UNKNOWN;
+   	goto done;
    }
 
-   return VK_SUCCESS;
+   for (uint32_t i = 0; i < NV_MAX_GPUS; i++) {
+   	if (!cardInfos[i].valid)
+   		continue;
+
+	   struct nvkmd_pdev *pdev = NULL;
+	   result = nvkmd_nvrm_create_pdev(log_obj, debug_flags, &cardInfos[i], &pdev);
+	   /* Incompatible device, skip. */
+	   if (result == VK_ERROR_INCOMPATIBLE_DRIVER)
+	   	result = VK_SUCCESS;
+
+	   if (result != VK_SUCCESS)
+	   	goto done;
+
+	   result = visitor(pdev, arg);
+	   if (result == VK_ERROR_INCOMPATIBLE_DRIVER)
+	   	result = VK_SUCCESS;
+
+	   if (result != VK_SUCCESS)
+	   	goto done;
+   }
+
+done:
+   close(ctlFd);
+   return result;
 }
 
 static void
