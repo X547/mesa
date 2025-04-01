@@ -294,59 +294,28 @@ nvkmd_nvrm_exec_ctx_exec(struct nvkmd_ctx *_ctx,
    uint64_t semAdrGpu = ctx->semSurf->memory->va->addr;
 
 	bool progressTrackerWFI = true;
-	*p.end++ =
-		DRF_DEF(A16F, _DMA, _SEC_OP,            _INC_METHOD) |
-		DRF_NUM(A16F, _DMA, _METHOD_COUNT,      5) |
-		DRF_NUM(A16F, _DMA, _METHOD_SUBCHANNEL, 0) |
-		DRF_NUM(A16F, _DMA, _METHOD_ADDRESS,    (NVC36F_SEM_ADDR_LO) >> 2)
-   ;
-   *p.end++ = (uint32_t)semAdrGpu;
-   *p.end++ = (uint32_t)(semAdrGpu >> 32);
-   *p.end++ = (uint32_t)ctx->wSeq;
-   *p.end++ = 0;
-   *p.end++ =
-		DRF_DEF(C36F, _SEM_EXECUTE, _OPERATION, _RELEASE) |
-		DRF_DEF(C36F, _SEM_EXECUTE, _PAYLOAD_SIZE, _32BIT) |
-		DRF_DEF(C36F, _SEM_EXECUTE, _RELEASE_TIMESTAMP, _DIS) |
-		(progressTrackerWFI ?
-			DRF_DEF(C36F, _SEM_EXECUTE, _RELEASE_WFI, _EN) :
-			DRF_DEF(C36F, _SEM_EXECUTE, _RELEASE_WFI, _DIS))
-   ;
-
-	*p.end++ =
-		DRF_DEF(A16F, _DMA, _SEC_OP,            _INC_METHOD) |
-		DRF_NUM(A16F, _DMA, _METHOD_COUNT,      1) |
-		DRF_NUM(A16F, _DMA, _METHOD_SUBCHANNEL, 0) |
-		DRF_NUM(A16F, _DMA, _METHOD_ADDRESS,    (NVC36F_NON_STALL_INTERRUPT) >> 2)
-   ;
-   *p.end++ = 0;
-
-#if 0
    P_MTHD(&p, NVC36F, SEM_ADDR_LO);
-   P_NVC36F_SEM_ADDR_LO(&p, (uint32_t)semAdrGpu);
+   P_NVC36F_SEM_ADDR_LO(&p, (uint32_t)semAdrGpu >> 2);
    P_NVC36F_SEM_ADDR_HI(&p, (uint32_t)(semAdrGpu >> 32));
    P_NVC36F_SEM_PAYLOAD_LO(&p, (uint32_t)ctx->wSeq);
-   P_NVC36F_SEM_PAYLOAD_HI(&p, 0);
+   P_NVC36F_SEM_PAYLOAD_HI(&p, (uint32_t)(ctx->wSeq >> 32));
    P_NVC36F_SEM_EXECUTE(&p, {
    	.operation = OPERATION_RELEASE,
-   	.release_wfi = RELEASE_WFI_EN,
+   	.release_wfi = progressTrackerWFI ? RELEASE_WFI_EN : RELEASE_WFI_DIS,
    	.payload_size = PAYLOAD_SIZE_32BIT,
    	.release_timestamp = RELEASE_TIMESTAMP_DIS,
    });
    P_MTHD(&p, NVC36F, NON_STALL_INTERRUPT);
    P_NVC36F_NON_STALL_INTERRUPT(&p, 0);
-#endif
 
    struct nvkmd_ctx_exec semExec = {
    	.addr = ctx->cmdBuf->va->addr,
    	.size_B = 4*nv_push_dw_count(&p),
    };
 
-#if 1
    for (uint32_t i = 0; i < exec_count; i++) {
       write_gp_fifo_entry(ctx, &execs[i]);
    }
-#endif
    write_gp_fifo_entry(ctx, &semExec);
 
    userD->GPPut = ctx->gpPut;
