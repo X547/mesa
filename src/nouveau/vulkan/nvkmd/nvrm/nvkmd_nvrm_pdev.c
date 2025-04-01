@@ -300,6 +300,17 @@ nvkmd_nvrm_create_pdev(struct vk_object_base *log_obj,
 		}
 	}
 
+	NV2080_CTRL_FB_GET_INFO_V2_PARAMS fbGetInfoParams = {
+		.fbInfoListSize = 2,
+		.fbInfoList = {
+			{.index = NV2080_CTRL_FB_INFO_INDEX_RAM_SIZE},
+			{.index = NV2080_CTRL_FB_INFO_INDEX_BAR1_SIZE},
+		},
+	};
+   nvRmApiControl(&rm, pdev->hSubdevice, NV2080_CTRL_CMD_FB_GET_INFO_V2, &fbGetInfoParams, sizeof(fbGetInfoParams));
+	uint64_t vramSize = fbGetInfoParams.fbInfoList[0].data * (uint64_t)1024;
+	uint64_t bar1Size = fbGetInfoParams.fbInfoList[1].data * (uint64_t)1024;
+
    pdev->base.dev_info = (struct nv_device_info) {
     .type = NV_DEVICE_TYPE_DIS,
     .device_id = ci->pci_info.device_id,
@@ -322,14 +333,17 @@ nvkmd_nvrm_create_pdev(struct vk_object_base *log_obj,
     .cls_eng3d   = nvkmd_nvrm_pdev_find_supported_class(pdev, ARRAY_SIZE(sSubchannelEng3dClasses), sSubchannelEng3dClasses),
     .cls_m2mf    = nvkmd_nvrm_pdev_find_supported_class(pdev, ARRAY_SIZE(sSubchannelM2mfClasses), sSubchannelM2mfClasses),
     .cls_compute = nvkmd_nvrm_pdev_find_supported_class(pdev, ARRAY_SIZE(sSubchannelComputeClasses), sSubchannelComputeClasses),
-    .vram_size_B = 0x100000000, //   4 GB
-    .bar_size_B  =  0x10000000  // 256 MB
+    .vram_size_B = vramSize,
+    .bar_size_B  = bar1Size
    };
 
    // TODO: bounds check
    strcpy(pdev->base.dev_info.device_name, getNameParams.gpuNameString.ascii);
 
-   pdev->base.kmd_info.has_alloc_tiled = true;
+   pdev->base.kmd_info = (struct nvkmd_info) {
+   	.has_get_vram_used = true,
+   	.has_alloc_tiled = true,
+   };
 
    pdev->channelClass = nvkmd_nvrm_pdev_find_supported_class(pdev, ARRAY_SIZE(sChannelClasses), sChannelClasses);
    uint32_t usermodeClass = nvkmd_nvrm_pdev_find_supported_class(pdev, ARRAY_SIZE(sUsermodeClasses), sUsermodeClasses);
@@ -438,7 +452,21 @@ nvkmd_nvrm_pdev_get_vram_used(struct nvkmd_pdev *_pdev)
 {
    struct nvkmd_nvrm_pdev *pdev = nvkmd_nvrm_pdev(_pdev);
 
-   return 0;
+   struct NvRmApi rm;
+   nvkmd_nvrm_dev_api_ctl(pdev, &rm);
+
+	NV2080_CTRL_FB_GET_INFO_V2_PARAMS fbGetInfoParams = {
+		.fbInfoListSize = 2,
+		.fbInfoList = {
+			{.index = NV2080_CTRL_FB_INFO_INDEX_TOTAL_RAM_SIZE},
+			{.index = NV2080_CTRL_FB_INFO_INDEX_HEAP_FREE},
+		},
+	};
+   nvRmApiControl(&rm, pdev->hSubdevice, NV2080_CTRL_CMD_FB_GET_INFO_V2, &fbGetInfoParams, sizeof(fbGetInfoParams));
+	uint64_t totalVramSize = fbGetInfoParams.fbInfoList[0].data * (uint64_t)1024;
+	uint64_t heapFree = fbGetInfoParams.fbInfoList[1].data * (uint64_t)1024;
+
+   return (totalVramSize >= heapFree) ? totalVramSize - heapFree : 0;
 }
 
 static int
