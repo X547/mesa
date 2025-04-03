@@ -8,6 +8,7 @@
 #include "nvkmd/nvkmd.h"
 #include "util/vma.h"
 #include "vk_sync.h"
+#include "nv_push.h"
 
 #include <sys/types.h>
 
@@ -127,6 +128,7 @@ struct nvkmd_nvrm_exec_ctx {
    uint64_t wSeq;
    uint64_t gpGet;
    uint64_t gpPut;
+   struct nv_push push;
 };
 
 NVKMD_DECL_SUBCLASS(ctx, nvrm_exec);
@@ -144,6 +146,9 @@ VkResult nvkmd_nvrm_create_ctx(struct nvkmd_dev *dev,
 
 struct nvkmd_nvrm_sync {
    struct vk_sync base;
+   struct NvRmSemSurf *semSurf;
+   uint64_t index;
+   uint64_t value;
 };
 
 void
