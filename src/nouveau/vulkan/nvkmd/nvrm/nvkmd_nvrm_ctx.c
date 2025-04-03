@@ -12,7 +12,6 @@
 #include "vk_log.h"
 
 #include "util/u_memory.h"
-#include "nv_push.h"
 #include "nv_push_clc36f.h"
 
 #include "nvRmSemSurf.h"
@@ -27,6 +26,56 @@
 #include "ctrl/ctrlc36f.h" // NVC36F_CTRL_CMD_INTERNAL_GPFIFO_GET_WORK_SUBMIT_TOKEN
 
 #define SUBC_NVC36F 0
+
+
+static void
+write_gp_fifo_entry(struct nvkmd_nvrm_exec_ctx *ctx, const struct nvkmd_ctx_exec *exec)
+{
+	//fprintf(stderr, "write_gp_fifo_entry(%#" PRIx64 ", %#" PRIx32 ")\n", exec->addr, exec->size_B);
+	uint32_t *ptr = (uint32_t*)ctx->gpFifo->map + 2*ctx->gpPut;
+
+	ptr[0] = DRF_NUM(A16F, _GP_ENTRY0, _GET, NvU64_LO32(exec->addr) >> 2);
+	ptr[1] =
+		DRF_NUM(A16F, _GP_ENTRY1, _GET_HI, NvU64_HI32(exec->addr)) |
+		DRF_NUM(A16F, _GP_ENTRY1, _LENGTH, (exec->size_B >> 2)) |
+		DRF_NUM(A16F, _GP_ENTRY1, _SYNC, (exec->no_prefetch ? NVA16F_GP_ENTRY1_SYNC_WAIT : NVA16F_GP_ENTRY1_SYNC_PROCEED));
+
+	ctx->gpPut = (ctx->gpPut + 1) % 0x8000;
+}
+
+static void
+write_semaphore_release(struct nv_push *push, uint64_t adrGpu, uint64_t value, bool waitForIdle)
+{
+   P_MTHD(push, NVC36F, SEM_ADDR_LO);
+   P_NVC36F_SEM_ADDR_LO(push, (uint32_t)adrGpu >> 2);
+   P_NVC36F_SEM_ADDR_HI(push, (uint32_t)(adrGpu >> 32));
+   P_NVC36F_SEM_PAYLOAD_LO(push, (uint32_t)value);
+   P_NVC36F_SEM_PAYLOAD_HI(push, (uint32_t)(value >> 32));
+   P_NVC36F_SEM_EXECUTE(push, {
+      .operation = OPERATION_RELEASE,
+      .release_wfi = waitForIdle ? RELEASE_WFI_EN : RELEASE_WFI_DIS,
+      .payload_size = PAYLOAD_SIZE_64BIT,
+      .release_timestamp = RELEASE_TIMESTAMP_DIS,
+   });
+   P_MTHD(push, NVC36F, NON_STALL_INTERRUPT);
+   P_NVC36F_NON_STALL_INTERRUPT(push, 0);
+}
+
+static void
+write_semaphore_acquire(struct nv_push *push, uint64_t adrGpu, uint64_t value)
+{
+   P_MTHD(push, NVC36F, SEM_ADDR_LO);
+   P_NVC36F_SEM_ADDR_LO(push, (uint32_t)adrGpu >> 2);
+   P_NVC36F_SEM_ADDR_HI(push, (uint32_t)(adrGpu >> 32));
+   P_NVC36F_SEM_PAYLOAD_LO(push, (uint32_t)value);
+   P_NVC36F_SEM_PAYLOAD_HI(push, (uint32_t)(value >> 32));
+   P_NVC36F_SEM_EXECUTE(push, {
+      .operation = OPERATION_ACQ_STRICT_GEQ,
+      .acquire_switch_tsg = ACQUIRE_SWITCH_TSG_EN,
+      .payload_size = PAYLOAD_SIZE_64BIT,
+   });
+}
+
 
 static VkResult
 nvkmd_nvrm_create_exec_ctx(struct nvkmd_dev *_dev,
@@ -187,6 +236,8 @@ nvkmd_nvrm_create_exec_ctx(struct nvkmd_dev *_dev,
       goto error1;
    }
 
+   nv_push_init(&ctx->push, ctx->cmdBuf->map, 0x10000 / 4);
+
    *ctx_out = &ctx->base;
    return VK_SUCCESS;
 
@@ -243,32 +294,6 @@ nvkmd_nvrm_exec_ctx_flush(struct nvkmd_ctx *_ctx,
                              struct vk_object_base *log_obj)
 {
    struct nvkmd_nvrm_exec_ctx *ctx = nvkmd_nvrm_exec_ctx(_ctx);
-
-   return VK_SUCCESS;
-}
-
-static void
-write_gp_fifo_entry(struct nvkmd_nvrm_exec_ctx *ctx, const struct nvkmd_ctx_exec *exec)
-{
-	//fprintf(stderr, "write_gp_fifo_entry(%#" PRIx64 ", %#" PRIx32 ")\n", exec->addr, exec->size_B);
-	uint32_t *ptr = (uint32_t*)ctx->gpFifo->map + 2*ctx->gpPut;
-
-	ptr[0] = DRF_NUM(A16F, _GP_ENTRY0, _GET, NvU64_LO32(exec->addr) >> 2);
-	ptr[1] =
-		DRF_NUM(A16F, _GP_ENTRY1, _GET_HI, NvU64_HI32(exec->addr)) |
-		DRF_NUM(A16F, _GP_ENTRY1, _LENGTH, (exec->size_B >> 2)) |
-		DRF_NUM(A16F, _GP_ENTRY1, _SYNC, (exec->no_prefetch ? NVA16F_GP_ENTRY1_SYNC_WAIT : NVA16F_GP_ENTRY1_SYNC_PROCEED));
-
-	ctx->gpPut = (ctx->gpPut + 1) % 0x8000;
-}
-
-static VkResult
-nvkmd_nvrm_exec_ctx_exec(struct nvkmd_ctx *_ctx,
-                            struct vk_object_base *log_obj,
-                            uint32_t exec_count,
-                            const struct nvkmd_ctx_exec *execs)
-{
-   struct nvkmd_nvrm_exec_ctx *ctx = nvkmd_nvrm_exec_ctx(_ctx);
    struct nvkmd_nvrm_dev *dev = nvkmd_nvrm_dev(ctx->base.dev);
    struct nvkmd_nvrm_pdev *pdev = nvkmd_nvrm_pdev(dev->base.pdev);
    struct NvRmApi rm;
@@ -288,34 +313,15 @@ nvkmd_nvrm_exec_ctx_exec(struct nvkmd_ctx *_ctx,
       return VK_ERROR_UNKNOWN;
    }
 
-   struct nv_push p;
-   nv_push_init(&p, ctx->cmdBuf->map, 0x10000 / 4);
-
    uint64_t semAdrGpu = ctx->semSurf->memory->va->addr;
 
-	bool progressTrackerWFI = true;
-   P_MTHD(&p, NVC36F, SEM_ADDR_LO);
-   P_NVC36F_SEM_ADDR_LO(&p, (uint32_t)semAdrGpu >> 2);
-   P_NVC36F_SEM_ADDR_HI(&p, (uint32_t)(semAdrGpu >> 32));
-   P_NVC36F_SEM_PAYLOAD_LO(&p, (uint32_t)ctx->wSeq);
-   P_NVC36F_SEM_PAYLOAD_HI(&p, (uint32_t)(ctx->wSeq >> 32));
-   P_NVC36F_SEM_EXECUTE(&p, {
-   	.operation = OPERATION_RELEASE,
-   	.release_wfi = progressTrackerWFI ? RELEASE_WFI_EN : RELEASE_WFI_DIS,
-   	.payload_size = PAYLOAD_SIZE_32BIT,
-   	.release_timestamp = RELEASE_TIMESTAMP_DIS,
-   });
-   P_MTHD(&p, NVC36F, NON_STALL_INTERRUPT);
-   P_NVC36F_NON_STALL_INTERRUPT(&p, 0);
+   write_semaphore_release(&ctx->push, semAdrGpu, ctx->wSeq, true);
 
    struct nvkmd_ctx_exec semExec = {
    	.addr = ctx->cmdBuf->va->addr,
-   	.size_B = 4*nv_push_dw_count(&p),
+   	.size_B = 4*nv_push_dw_count(&ctx->push),
    };
 
-   for (uint32_t i = 0; i < exec_count; i++) {
-      write_gp_fifo_entry(ctx, &execs[i]);
-   }
    write_gp_fifo_entry(ctx, &semExec);
 
    userD->GPPut = ctx->gpPut;
@@ -344,6 +350,22 @@ nvkmd_nvrm_exec_ctx_exec(struct nvkmd_ctx *_ctx,
    }
 
    ctx->gpGet = ctx->gpPut;
+   nv_push_init(&ctx->push, ctx->cmdBuf->map, 0x10000 / 4);
+
+   return VK_SUCCESS;
+}
+
+static VkResult
+nvkmd_nvrm_exec_ctx_exec(struct nvkmd_ctx *_ctx,
+                            struct vk_object_base *log_obj,
+                            uint32_t exec_count,
+                            const struct nvkmd_ctx_exec *execs)
+{
+   struct nvkmd_nvrm_exec_ctx *ctx = nvkmd_nvrm_exec_ctx(_ctx);
+
+   for (uint32_t i = 0; i < exec_count; i++) {
+      write_gp_fifo_entry(ctx, &execs[i]);
+   }
 
    return VK_SUCCESS;
 }
@@ -365,7 +387,7 @@ nvkmd_nvrm_exec_ctx_sync(struct nvkmd_ctx *_ctx,
 {
    struct nvkmd_nvrm_exec_ctx *ctx = nvkmd_nvrm_exec_ctx(_ctx);
 
-   return VK_SUCCESS;
+   return nvkmd_nvrm_exec_ctx_flush(&ctx->base, log_obj);
 }
 
 const struct nvkmd_ctx_ops nvkmd_nvrm_exec_ctx_ops = {
