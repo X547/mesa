@@ -66,7 +66,9 @@
 #include "pipe/p_screen.h"
 #include "util/bitscan.h"
 #include "util/driconf.h"
+#ifdef HAVE_LIBDRM
 #include "util/libsync.h"
+#endif
 #include "util/os_file.h"
 #include "util/u_atomic.h"
 #include "util/u_call_once.h"

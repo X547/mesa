@@ -70,6 +70,11 @@ init_dt_type(struct kopper_displaytarget *cdt)
       cdt->type = KOPPER_WIN32;
       break;
 #endif
+#ifdef __HAIKU__
+    case VK_STRUCTURE_TYPE_HEADLESS_SURFACE_CREATE_INFO_EXT:
+       cdt->type = KOPPER_HAIKU;
+       break;
+#endif
    default:
       unreachable("unsupported!");
    }
@@ -108,6 +113,11 @@ kopper_CreateSurface(struct zink_screen *screen, struct kopper_displaytarget *cd
       error = VKSCR(CreateWin32SurfaceKHR)(screen->instance, win32, NULL, &surface);
       break;
    }
+#endif
+#ifdef __HAIKU__
+    case VK_STRUCTURE_TYPE_HEADLESS_SURFACE_CREATE_INFO_EXT:
+       error = zink_kopper_create_surface_haiku(screen, &cdt->info, &surface);
+       break;
 #endif
    default:
       unreachable("unsupported!");
@@ -219,6 +229,11 @@ find_dt_entry(struct zink_screen *screen, const struct kopper_displaytarget *cdt
       break;
    }
 #endif
+#ifdef __HAIKU__
+   case KOPPER_HAIKU:
+      he = _mesa_hash_table_search(&screen->dts, cdt->info.bitmapHook);
+      break;
+#endif
    default:
       unreachable("unsupported!");
    }
@@ -294,6 +309,7 @@ kopper_CreateSwapchain(struct zink_screen *screen, struct kopper_displaytarget *
    switch (cdt->type) {
    case KOPPER_X11:
    case KOPPER_WIN32:
+   case KOPPER_HAIKU:
       /* With Xcb, minImageExtent, maxImageExtent, and currentExtent must always equal the window size.
        * ...
        * Due to above restrictions, it is only possible to create a new swapchain on this
@@ -423,6 +439,7 @@ zink_kopper_displaytarget_create(struct zink_screen *screen, unsigned tex_usage,
             break;
          case KOPPER_WAYLAND:
          case KOPPER_WIN32:
+         case KOPPER_HAIKU:
             _mesa_hash_table_init(&screen->dts, screen, _mesa_hash_pointer, _mesa_key_pointer_equal);
             break;
          default:
@@ -494,6 +511,11 @@ zink_kopper_displaytarget_create(struct zink_screen *screen, unsigned tex_usage,
       _mesa_hash_table_insert(&screen->dts, win32->hwnd, cdt);
       break;
    }
+#endif
+#ifdef __HAIKU__
+   case KOPPER_HAIKU:
+      _mesa_hash_table_insert(&screen->dts, cdt->info.bitmapHook, cdt);
+      break;
 #endif
    default:
       unreachable("unsupported!");
@@ -828,7 +850,7 @@ zink_kopper_present_queue(struct zink_screen *screen, struct zink_resource *res,
       mesa_loge("ZINK: failed to allocate cpi!");
       return;
    }
-      
+
    cpi->sem = res->obj->present;
    cpi->res = res;
    cpi->swapchain = cdt->swapchain;
@@ -851,8 +873,11 @@ zink_kopper_present_queue(struct zink_screen *screen, struct zink_resource *res,
       cpi->region.rectangleCount = nrects;
       cpi->region.pRectangles = cpi->regions;
       for (unsigned i = 0; i < nrects; i++) {
+         fprintf(stderr, "i: %u\n", i);
+         fprintf(stderr, "cpi: %p\n", cpi);
+         fprintf(stderr, "boxes: %p\n", boxes);
          cpi->regions[i].offset.x = boxes[i].x;
-         /* 
+         /*
             2) Where is the origin of the VkRectLayerKHR?
 
             RESOLVED: The upper left corner of the presentable image(s) of the swapchain, per the definition of framebuffer coordinates.

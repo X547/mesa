@@ -28,6 +28,7 @@
 #ifndef _LIBSYNC_H
 #define _LIBSYNC_H
 
+#error "not supported"
 #include <assert.h>
 #include <errno.h>
 #include <poll.h>

@@ -63,6 +63,10 @@
 #endif
 #endif
 
+#ifdef __HAIKU__
+#define RTLD_NOLOAD 0
+#endif
+
 static int num_screens = 0;
 bool zink_tracing = false;
 
@@ -1714,7 +1718,7 @@ update_queue_props(struct zink_screen *screen)
       mesa_loge("ZINK: failed to allocate props!");
       return;
    }
-      
+
    VKSCR(GetPhysicalDeviceQueueFamilyProperties)(screen->pdev, &num_queues, props);
 
    bool found_gfx = false;
@@ -2863,9 +2867,9 @@ init_driver_workarounds(struct zink_screen *screen)
       break;
    }
 
-   if (zink_driverid(screen) == VK_DRIVER_ID_AMD_OPEN_SOURCE || 
-       zink_driverid(screen) == VK_DRIVER_ID_AMD_PROPRIETARY || 
-       zink_driverid(screen) == VK_DRIVER_ID_NVIDIA_PROPRIETARY || 
+   if (zink_driverid(screen) == VK_DRIVER_ID_AMD_OPEN_SOURCE ||
+       zink_driverid(screen) == VK_DRIVER_ID_AMD_PROPRIETARY ||
+       zink_driverid(screen) == VK_DRIVER_ID_NVIDIA_PROPRIETARY ||
        zink_driverid(screen) == VK_DRIVER_ID_MESA_RADV)
       screen->driver_workarounds.z24_unscaled_bias = 1<<23;
    else

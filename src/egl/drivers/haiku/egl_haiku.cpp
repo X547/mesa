@@ -52,6 +52,7 @@
 #include <Bitmap.h>
 
 extern "C" {
+#include "gallium/drivers/zink/zink_public.h"
 #include "target-helpers/inline_sw_helper.h"
 }
 
@@ -232,7 +233,7 @@ haiku_swap_buffers(_EGLDisplay *disp, _EGLSurface *surf)
    // flush back buffer and swap buffers if double buffering is used
    if (backBuffer != NULL) {
       screen->flush_frontbuffer(screen, st->pipe, backBuffer, 0, 0,
-                                buffer->winsysContext, 1, NULL);
+                                buffer->winsysContext, 0, NULL);
       std::swap(frontBuffer, backBuffer);
       p_atomic_inc(&buffer->base.stamp);
    }
@@ -343,7 +344,11 @@ haiku_initialize_impl(_EGLDisplay *disp, void *platformDisplay)
    disp->DriverData = (void *)hgl_dpy;
 
    struct sw_winsys *winsys = hgl_create_sw_winsys();
-   struct pipe_screen *screen = sw_screen_create(winsys);
+#if 0
+   struct pipe_screen* screen = sw_screen_create(winsys);
+#else
+   struct pipe_screen* screen = zink_create_screen(winsys, NULL);
+#endif
    hgl_dpy->disp = hgl_create_display(screen);
 
    disp->ClientAPIs = 0;

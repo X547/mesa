@@ -43,7 +43,9 @@
 #include "dri_helpers.h"
 #include "dri_query_renderer.h"
 
+#ifndef __HAIKU__
 #include "util/libsync.h"
+#endif
 
 #ifdef HAVE_LIBDRM
 #include <xf86drm.h>

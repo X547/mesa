@@ -7,6 +7,7 @@
  *      Alexander von Gluck IV, kallisti5@unixzen.com
  */
 
+#define GALLIUM_ZINK
 #include "hgl_context.h"
 
 #include <stdio.h>
@@ -17,6 +18,10 @@
 #include "util/u_memory.h"
 #include "util/u_inlines.h"
 #include "state_tracker/st_context.h"
+
+#ifdef GALLIUM_ZINK
+#include "kopper_interface.h"
+#endif
 
 
 #if MESA_DEBUG
@@ -76,6 +81,21 @@ hgl_st_framebuffer_flush_front(struct st_context *st,
 }
 
 
+#ifdef GALLIUM_ZINK
+static void
+stw_st_fill_private_loader_data(struct hgl_buffer *buffer, struct kopper_loader_info *out)
+{
+	VkHeadlessSurfaceCreateInfoEXT *headless = (VkHeadlessSurfaceCreateInfoEXT*)&out->bos;
+
+	headless->sType = VK_STRUCTURE_TYPE_HEADLESS_SURFACE_CREATE_INFO_EXT;
+	headless->pNext = NULL;
+	headless->flags = 0;
+	out->bitmapHook = buffer->winsysContext;
+	out->has_alpha = true;
+}
+#endif
+
+
 static bool
 hgl_st_framebuffer_validate_textures(struct pipe_frontend_drawable *drawable,
 	unsigned width, unsigned height, unsigned mask)
@@ -115,10 +135,18 @@ hgl_st_framebuffer_validate_textures(struct pipe_frontend_drawable *drawable,
 				case ST_ATTACHMENT_BACK_RIGHT:
 					format = buffer->visual.color_format;
 					bind = PIPE_BIND_DISPLAY_TARGET | PIPE_BIND_RENDER_TARGET;
+#ifdef GALLIUM_ZINK
+					/* Covers the case where we have already created a drawable that
+					* then got swapped and now we have to make a new back buffer.
+					* For Zink, we just alias the front buffer in that case.
+					*/
+					if (i == ST_ATTACHMENT_BACK_LEFT && buffer->textures[ST_ATTACHMENT_FRONT_LEFT])
+						bind &= ~PIPE_BIND_DISPLAY_TARGET;
+#endif
 					break;
 				case ST_ATTACHMENT_DEPTH_STENCIL:
 					format = buffer->visual.depth_stencil_format;
-					bind = PIPE_BIND_DEPTH_STENCIL;
+					bind = PIPE_BIND_DISPLAY_TARGET | PIPE_BIND_DEPTH_STENCIL;
 					break;
 				default:
 					format = PIPE_FORMAT_NONE;
@@ -130,8 +158,25 @@ hgl_st_framebuffer_validate_textures(struct pipe_frontend_drawable *drawable,
 				templat.format = format;
 				templat.bind = bind;
 				TRACE("resource_create(%d, %d, %d)\n", i, format, bind);
-				buffer->textures[i] = buffer->screen->resource_create(buffer->screen,
-					&templat);
+#ifdef GALLIUM_ZINK
+				if (i < ST_ATTACHMENT_DEPTH_STENCIL && buffer->screen->resource_create_drawable) {
+					struct kopper_loader_info loader_info;
+					void *data;
+
+					if (bind & PIPE_BIND_DISPLAY_TARGET) {
+						stw_st_fill_private_loader_data(buffer, &loader_info);
+						data = &loader_info;
+					} else
+						data = buffer->textures[ST_ATTACHMENT_FRONT_LEFT];
+
+					assert(data);
+					buffer->textures[i] = buffer->screen->resource_create_drawable(buffer->screen, &templat, data);
+				} else {
+#endif
+					buffer->textures[i] = buffer->screen->resource_create(buffer->screen, &templat);
+#ifdef GALLIUM_ZINK
+				}
+#endif
 				if (!buffer->textures[i])
 					return false;
 			}

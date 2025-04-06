@@ -12,6 +12,7 @@ files_libzink = files(
   'zink_compiler.c',
   'zink_context.c',
   'zink_kopper.c',
+  'zink_kopper_haiku.cpp',
   'zink_descriptors.c',
   'zink_draw.cpp',
   'zink_fence.c',

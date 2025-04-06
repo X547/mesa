@@ -95,6 +95,7 @@ struct kopper_vk_surface_create_storage {
 
 struct kopper_loader_info {
    struct kopper_vk_surface_create_storage bos;
+   void *bitmapHook;
    int has_alpha;
    int initial_swap_interval;
    bool present_opaque;
