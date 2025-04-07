@@ -28,6 +28,10 @@
 #define SUBC_NVC36F 0
 
 
+#define NV_CHECK(nvRes) {NV_STATUS _nvRes = nvRes; if (_nvRes != NV_OK) {vkRes = vk_error(log_obj, VK_ERROR_UNKNOWN); goto error;}}
+#define VK_CHECK(vkResIn) {VkResult _vkRes = vkResIn; if (_vkRes != VK_SUCCESS) {vkRes = vk_error(log_obj, _vkRes); goto error;}}
+
+
 static void
 write_gp_fifo_entry(struct nvkmd_nvrm_exec_ctx *ctx, const struct nvkmd_ctx_exec *exec)
 {
@@ -99,18 +103,10 @@ nvkmd_nvrm_create_exec_ctx(struct nvkmd_dev *_dev,
 
    ctx->osEvent = -1;
 
-   vkRes = nvkmd_dev_alloc_mapped_mem(_dev, log_obj,  0x1000,  0x1000, NVKMD_MEM_GART, NVKMD_MEM_MAP_RDWR,  &ctx->notifier);
-   if (vkRes != VK_SUCCESS)
-   	goto error1;
-   vkRes = nvkmd_dev_alloc_mapped_mem(_dev, log_obj, 0x80000, 0x10000, NVKMD_MEM_LOCAL, NVKMD_MEM_MAP_RDWR, &ctx->userD);
-   if (vkRes != VK_SUCCESS)
-   	goto error1;
-   vkRes = nvkmd_dev_alloc_mapped_mem(_dev, log_obj, 0x40000,  0x1000, NVKMD_MEM_GART, NVKMD_MEM_MAP_RDWR,  &ctx->gpFifo);
-   if (vkRes != VK_SUCCESS)
-   	goto error1;
-   vkRes = nvkmd_dev_alloc_mapped_mem(_dev, log_obj, 0x10000,  0x1000, NVKMD_MEM_GART, NVKMD_MEM_MAP_RDWR,  &ctx->cmdBuf);
-   if (vkRes != VK_SUCCESS)
-   	goto error1;
+   VK_CHECK(nvkmd_dev_alloc_mapped_mem(_dev, log_obj,  0x1000,  0x1000, NVKMD_MEM_GART, NVKMD_MEM_MAP_RDWR,  &ctx->notifier));
+   VK_CHECK(nvkmd_dev_alloc_mapped_mem(_dev, log_obj, 0x80000, 0x10000, NVKMD_MEM_LOCAL, NVKMD_MEM_MAP_RDWR, &ctx->userD));
+   VK_CHECK(nvkmd_dev_alloc_mapped_mem(_dev, log_obj, 0x40000,  0x1000, NVKMD_MEM_GART, NVKMD_MEM_MAP_RDWR,  &ctx->gpFifo));
+   VK_CHECK(nvkmd_dev_alloc_mapped_mem(_dev, log_obj, 0x10000,  0x1000, NVKMD_MEM_GART, NVKMD_MEM_MAP_RDWR,  &ctx->cmdBuf));
 
 	NV_CONTEXT_DMA_ALLOCATION_PARAMS ctxDmaParams = {
 		.flags =
@@ -121,11 +117,7 @@ nvkmd_nvrm_create_exec_ctx(struct nvkmd_dev *_dev,
 		.offset = 0,
 		.limit = ctx->notifier->size_B - 1,
 	};
-   NV_STATUS nvRes = nvRmApiAlloc(&rm, pdev->hDevice, &ctx->hCtxDma, NV01_CONTEXT_DMA, &ctxDmaParams);
-   if (nvRes != NV_OK) {
-      vkRes = VK_ERROR_UNKNOWN;
-      goto error1;
-   }
+   NV_CHECK(nvRmApiAlloc(&rm, pdev->hDevice, &ctx->hCtxDma, NV01_CONTEXT_DMA, &ctxDmaParams));
 
    NvU32 engineType = NV2080_ENGINE_TYPE_GRAPHICS;
 	NV_CHANNEL_ALLOC_PARAMS createChannelParams = {
@@ -138,110 +130,58 @@ nvkmd_nvrm_create_exec_ctx(struct nvkmd_dev *_dev,
 		.userdOffset   = {0},
 		.engineType    = engineType,
 	};
-   nvRes = nvRmApiAlloc(&rm, pdev->hDevice, &ctx->hChannel, pdev->channelClass, &createChannelParams);
-   if (nvRes != NV_OK) {
-      vkRes = VK_ERROR_UNKNOWN;
-      goto error1;
-   }
+   NV_CHECK(nvRmApiAlloc(&rm, pdev->hDevice, &ctx->hChannel, pdev->channelClass, &createChannelParams));
 
 	NVA06F_CTRL_BIND_PARAMS bindParams = {.engineType = engineType};
-	nvRes = nvRmApiControl(&rm, ctx->hChannel, NVA06F_CTRL_CMD_BIND, &bindParams, sizeof(bindParams));
-   if (nvRes != NV_OK) {
-      vkRes = VK_ERROR_UNKNOWN;
-      goto error1;
-   }
+	NV_CHECK(nvRmApiControl(&rm, ctx->hChannel, NVA06F_CTRL_CMD_BIND, &bindParams, sizeof(bindParams)));
 
 	NVA06F_CTRL_GPFIFO_SCHEDULE_PARAMS scheduleParams = {.bEnable = NV_TRUE};
-	nvRes = nvRmApiControl(&rm, ctx->hChannel, NVA06F_CTRL_CMD_GPFIFO_SCHEDULE, &scheduleParams, sizeof(scheduleParams));
-   if (nvRes != NV_OK) {
-      vkRes = VK_ERROR_UNKNOWN;
-      goto error1;
-   }
+	NV_CHECK(nvRmApiControl(&rm, ctx->hChannel, NVA06F_CTRL_CMD_GPFIFO_SCHEDULE, &scheduleParams, sizeof(scheduleParams)));
 
 	NVC36F_CTRL_GPFIFO_SET_WORK_SUBMIT_TOKEN_NOTIF_INDEX_PARAMS notifParams = {
 		.index = NV_CHANNELGPFIFO_NOTIFICATION_TYPE_WORK_SUBMIT_TOKEN
 	};
-	nvRes = nvRmApiControl(&rm,
+	NV_CHECK(nvRmApiControl(&rm,
 		ctx->hChannel,
 		NVC36F_CTRL_CMD_GPFIFO_SET_WORK_SUBMIT_TOKEN_NOTIF_INDEX,
 		&notifParams,
 		sizeof(notifParams)
-	);
-   if (nvRes != NV_OK) {
-      vkRes = VK_ERROR_UNKNOWN;
-      goto error1;
-   }
+	));
 
 	NVC36F_CTRL_CMD_GPFIFO_GET_WORK_SUBMIT_TOKEN_PARAMS tokenParams = {0};
-	nvRes = nvRmApiControl(&rm,
+	NV_CHECK(nvRmApiControl(&rm,
 		ctx->hChannel,
 		NVC36F_CTRL_CMD_GPFIFO_GET_WORK_SUBMIT_TOKEN,
 		&tokenParams,
 		sizeof(tokenParams)
-	);
-   if (nvRes != NV_OK) {
-      vkRes = VK_ERROR_UNKNOWN;
-      goto error1;
-   }
+	));
 
-   nvRes = nvRmApiAlloc(&rm, ctx->hChannel, &ctx->subchannels.hCopy, pdev->base.dev_info.cls_copy, NULL);
-   if (nvRes != NV_OK) {
-      vkRes = VK_ERROR_UNKNOWN;
-      goto error1;
-   }
-   nvRes = nvRmApiAlloc(&rm, ctx->hChannel, &ctx->subchannels.hEng2d, pdev->base.dev_info.cls_eng2d, NULL);
-   if (nvRes != NV_OK) {
-      vkRes = VK_ERROR_UNKNOWN;
-      goto error1;
-   }
-   nvRes = nvRmApiAlloc(&rm, ctx->hChannel, &ctx->subchannels.hEng3d, pdev->base.dev_info.cls_eng3d, NULL);
-   if (nvRes != NV_OK) {
-      vkRes = VK_ERROR_UNKNOWN;
-      goto error1;
-   }
-   nvRes = nvRmApiAlloc(&rm, ctx->hChannel, &ctx->subchannels.hM2mf, pdev->base.dev_info.cls_m2mf, NULL);
-   if (nvRes != NV_OK) {
-      vkRes = VK_ERROR_UNKNOWN;
-      goto error1;
-   }
-   nvRes = nvRmApiAlloc(&rm, ctx->hChannel, &ctx->subchannels.hCompute, pdev->base.dev_info.cls_compute, NULL);
-   if (nvRes != NV_OK) {
-      vkRes = VK_ERROR_UNKNOWN;
-      goto error1;
-   }
+   NV_CHECK(nvRmApiAlloc(&rm, ctx->hChannel, &ctx->subchannels.hCopy, pdev->base.dev_info.cls_copy, NULL));
+   NV_CHECK(nvRmApiAlloc(&rm, ctx->hChannel, &ctx->subchannels.hEng2d, pdev->base.dev_info.cls_eng2d, NULL));
+   NV_CHECK(nvRmApiAlloc(&rm, ctx->hChannel, &ctx->subchannels.hEng3d, pdev->base.dev_info.cls_eng3d, NULL));
+   NV_CHECK(nvRmApiAlloc(&rm, ctx->hChannel, &ctx->subchannels.hM2mf, pdev->base.dev_info.cls_m2mf, NULL));
+   NV_CHECK(nvRmApiAlloc(&rm, ctx->hChannel, &ctx->subchannels.hCompute, pdev->base.dev_info.cls_compute, NULL));
 
    ctx->osEvent = open(rm.nodeName, O_RDWR | O_CLOEXEC);
    if (ctx->osEvent < 0) {
       vkRes = VK_ERROR_UNKNOWN;
-      goto error1;
+      goto error;
    }
    struct NvRmApi rmOsEvent = rm;
    rmOsEvent.fd = ctx->osEvent;
-   nvRes = nvRmApiAllocOsEvent(&rmOsEvent, ctx->osEvent);
-   if (nvRes != NV_OK) {
-      vkRes = VK_ERROR_UNKNOWN;
-      goto error1;
-   }
+   NV_CHECK(nvRmApiAllocOsEvent(&rmOsEvent, ctx->osEvent));
 
-   nvRes = nvRmSemSurfCreate(dev, 0x1000, &ctx->semSurf);
-   if (nvRes != NV_OK) {
-      vkRes = VK_ERROR_UNKNOWN;
-      goto error1;
-   }
+   NV_CHECK(nvRmSemSurfCreate(dev, 0x1000, &ctx->semSurf));
 
 	NvU32 notifyIndices[] = {12};
-	nvRes = nvRmSemSurfBindChannel(ctx->semSurf, ctx->hChannel, 1, notifyIndices);
-   if (nvRes != NV_OK) {
-      vkRes = VK_ERROR_UNKNOWN;
-      goto error1;
-   }
+	NV_CHECK(nvRmSemSurfBindChannel(ctx->semSurf, ctx->hChannel, 1, notifyIndices));
 
    nv_push_init(&ctx->push, ctx->cmdBuf->map, 0x10000 / 4);
 
    *ctx_out = &ctx->base;
    return VK_SUCCESS;
 
-error1:
+error:
    nvkmd_ctx_destroy(&ctx->base);
 	return vkRes;
 }
@@ -302,7 +242,7 @@ nvkmd_nvrm_exec_ctx_flush(struct nvkmd_ctx *_ctx,
    NvNotification *notifiers = ctx->notifier->map;
    NvNotification *submitTokenNotifier = &notifiers[NV_CHANNELGPFIFO_NOTIFICATION_TYPE_WORK_SUBMIT_TOKEN];
    KeplerBControlGPFifo *userD = ctx->userD->map;
-   uint64_t *maxSubmitted = (uint64_t*)((uint8_t*)ctx->semSurf->memory->map + 0x18);
+   uint64_t *maxSubmitted = nvRmSemSurfMaxSubmittedValue(ctx->semSurf, 0);
 
    ctx->wSeq++;
    *maxSubmitted = ctx->wSeq;
