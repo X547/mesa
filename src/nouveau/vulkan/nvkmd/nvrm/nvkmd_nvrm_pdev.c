@@ -92,6 +92,7 @@
 #include "class/clc461.h"
 #include "class/clc661.h"
 
+#include "ctrl/ctrl0000/ctrl0000gpu.h" // NV0000_CTRL_CMD_GPU_GET_ID_INFO_V2
 #include "ctrl/ctrl0080/ctrl0080gr.h" // NV0080_CTRL_GR_GET_INFO_V2
 #include "ctrl/ctrl0080/ctrl0080gpu.h" // NV0080_CTRL_CMD_GPU_GET_CLASSLIST_V2
 #include "ctrl/ctrl2080/ctrl2080gr.h" // NV2080_CTRL_CMD_GR_GET_GPC_MASK
@@ -215,12 +216,64 @@ nvkmd_nvrm_pdev_find_supported_class(struct nvkmd_nvrm_pdev *pdev, uint32_t numC
 	return 0;
 }
 
+static const char*
+nvkmd_nvrm_get_chipset_name(uint32_t chipset)
+{
+	switch (chipset) {
+		case 0x160: return "TU100";
+		case 0x162: return "TU102";
+		case 0x164: return "TU104";
+		case 0x166: return "TU106";
+		case 0x168: return "TU116";
+		case 0x167: return "TU117";
+
+		case 0x170: return "GA100";
+		case 0x172: return "GA102";
+		case 0x173: return "GA103";
+		case 0x174: return "GA104";
+		case 0x176: return "GA106";
+		case 0x177: return "GA107";
+		case 0x17B: return "GA10B";
+
+		case 0x180: return "GH100";
+		case 0x181: return "GH100_SOC";
+
+		case 0x190: return "AD100";
+		case 0x191: return "AD101";
+		case 0x192: return "AD102";
+		case 0x193: return "AD103";
+		case 0x194: return "AD104";
+		case 0x196: return "AD106";
+		case 0x197: return "AD107";
+		case 0x19B: return "AD10B";
+
+		case 0x1A0: return "GB100";
+		case 0x1A2: return "GB102";
+
+		case 0x1B0: return "GB200";
+		case 0x1B2: return "GB202";
+		case 0x1B3: return "GB203";
+		case 0x1B4: return "GB204";
+		case 0x1B5: return "GB205";
+		case 0x1B6: return "GB206";
+		case 0x1B7: return "GB207";
+
+		default: return "?";
+	}
+}
+
+
+#define NV_CHECK(nvRes) {NV_STATUS _nvRes = nvRes; if (_nvRes != NV_OK) {vkRes = vk_error(log_obj, VK_ERROR_UNKNOWN); goto error;}}
+
+
 static VkResult
 nvkmd_nvrm_create_pdev(struct vk_object_base *log_obj,
                        enum nvk_debug debug_flags,
                        nv_ioctl_card_info_t *ci,
                        struct nvkmd_pdev **pdev_out)
 {
+   VkResult vkRes;
+   NV_STATUS nvRes;
    struct nvkmd_nvrm_pdev *pdev = CALLOC_STRUCT(nvkmd_nvrm_pdev);
    if (pdev == NULL) {
       return vk_error(log_obj, VK_ERROR_OUT_OF_HOST_MEMORY);
@@ -233,8 +286,10 @@ nvkmd_nvrm_create_pdev(struct vk_object_base *log_obj,
    pdev->devFd = -1;
 
    asprintf(&pdev->devName, "/dev/nvidia%u", ci->minor_number);
-   if (pdev->devName == NULL)
-      return vk_error(log_obj, VK_ERROR_OUT_OF_HOST_MEMORY);
+   if (pdev->devName == NULL) {
+      vkRes = vk_error(log_obj, VK_ERROR_OUT_OF_HOST_MEMORY);
+   	goto error;
+   }
 
    pdev->ctlFd = open("/dev/nvidiactl", O_RDWR | O_CLOEXEC);
    pdev->devFd = open(pdev->devName, O_RDWR | O_CLOEXEC);
@@ -243,33 +298,44 @@ nvkmd_nvrm_create_pdev(struct vk_object_base *log_obj,
    memset(&rm, 0, sizeof(rm));
    rm.fd = pdev->ctlFd;
 
-   nvRmApiAlloc(&rm, 0, &pdev->hClient, NV01_ROOT_CLIENT, NULL);
+   NV_CHECK(nvRmApiAlloc(&rm, 0, &pdev->hClient, NV01_ROOT_CLIENT, NULL));
    nvkmd_nvrm_dev_api_ctl(pdev, &rm);
    nvkmd_nvrm_dev_api_dev(pdev, &devRm);
 
-   NV0080_ALLOC_PARAMETERS ap0080 = {.deviceId = 0, .hClientShare = pdev->hClient};
+   NV0000_CTRL_GPU_GET_ID_INFO_V2_PARAMS idInfoParams = {
+   	.gpuId = ci->gpu_id,
+   };
+   nvRes = nvRmApiControl(&rm, pdev->hClient, NV0000_CTRL_CMD_GPU_GET_ID_INFO_V2, &idInfoParams, sizeof(idInfoParams));
+   if (nvRes == NV_ERR_INVALID_ARGUMENT) {
+   	vkRes = vk_error(log_obj, VK_ERROR_INCOMPATIBLE_DRIVER);
+   	goto error;
+   }
+   NV_CHECK(nvRes);
 
-   nvRmApiAlloc(&rm, pdev->hClient, &pdev->hDevice, NV01_DEVICE_0, &ap0080);
-   nvRmApiAlloc(&rm, pdev->hDevice, &pdev->hSubdevice, NV20_SUBDEVICE_0, NULL);
-   nvRmApiControl(&rm, pdev->hSubdevice, NV2080_CTRL_CMD_FB_GET_SEMAPHORE_SURFACE_LAYOUT, &pdev->semSurfLayout, sizeof(pdev->semSurfLayout));
+   NV0080_ALLOC_PARAMETERS ap0080 = {.deviceId = idInfoParams.deviceInstance, .hClientShare = pdev->hClient};
+   NV2080_ALLOC_PARAMETERS ap2080 = {.subDeviceId = idInfoParams.subDeviceInstance};
+
+   NV_CHECK(nvRmApiAlloc(&rm, pdev->hClient, &pdev->hDevice, NV01_DEVICE_0, &ap0080));
+   NV_CHECK(nvRmApiAlloc(&rm, pdev->hDevice, &pdev->hSubdevice, NV20_SUBDEVICE_0, &ap2080));
+   NV_CHECK(nvRmApiControl(&rm, pdev->hSubdevice, NV2080_CTRL_CMD_FB_GET_SEMAPHORE_SURFACE_LAYOUT, &pdev->semSurfLayout, sizeof(pdev->semSurfLayout)));
 
 
    NV2080_CTRL_MC_GET_ARCH_INFO_PARAMS archInfoParams = {};
-   nvRmApiControl(&rm, pdev->hSubdevice, NV2080_CTRL_CMD_MC_GET_ARCH_INFO, &archInfoParams, sizeof(archInfoParams));
+   NV_CHECK(nvRmApiControl(&rm, pdev->hSubdevice, NV2080_CTRL_CMD_MC_GET_ARCH_INFO, &archInfoParams, sizeof(archInfoParams)));
 
    NV2080_CTRL_GPU_GET_NAME_STRING_PARAMS getNameParams = {
       .gpuNameStringFlags = NV2080_CTRL_GPU_GET_NAME_STRING_FLAGS_TYPE_ASCII,
    };
-   nvRmApiControl(&rm, pdev->hSubdevice, NV2080_CTRL_CMD_GPU_GET_NAME_STRING, &getNameParams, sizeof(getNameParams));
+   NV_CHECK(nvRmApiControl(&rm, pdev->hSubdevice, NV2080_CTRL_CMD_GPU_GET_NAME_STRING, &getNameParams, sizeof(getNameParams)));
 
    NV0080_CTRL_GPU_GET_CLASSLIST_V2_PARAMS classListParams = {};
-   nvRmApiControl(&rm, pdev->hDevice, NV0080_CTRL_CMD_GPU_GET_CLASSLIST_V2, &classListParams, sizeof(classListParams));
+   NV_CHECK(nvRmApiControl(&rm, pdev->hDevice, NV0080_CTRL_CMD_GPU_GET_CLASSLIST_V2, &classListParams, sizeof(classListParams)));
 
    pdev->numClasses = classListParams.numClasses;
    pdev->classList = calloc(classListParams.numClasses, sizeof(uint32_t));
    if (pdev->classList == NULL) {
-   	nvkmd_pdev_destroy(&pdev->base);
-      return vk_error(log_obj, VK_ERROR_OUT_OF_HOST_MEMORY);
+      vkRes = vk_error(log_obj, VK_ERROR_OUT_OF_HOST_MEMORY);
+      goto error;
    }
    memcpy(pdev->classList, &classListParams.classList, classListParams.numClasses * sizeof(uint32_t));
    qsort(pdev->classList, classListParams.numClasses, sizeof(uint32_t), compare_uint32);
@@ -282,7 +348,7 @@ nvkmd_nvrm_create_pdev(struct vk_object_base *log_obj,
 			{.index = NV0080_CTRL_GR_INFO_INDEX_LITTER_NUM_SM_PER_TPC},
 		},
 	};
-   nvRmApiControl(&rm, pdev->hDevice, NV0080_CTRL_CMD_GR_GET_INFO_V2, &grGetInfoParams, sizeof(grGetInfoParams));
+   NV_CHECK(nvRmApiControl(&rm, pdev->hDevice, NV0080_CTRL_CMD_GR_GET_INFO_V2, &grGetInfoParams, sizeof(grGetInfoParams)));
    uint32_t smVersion = grGetInfoParams.grInfoList[0].data;
    uint32_t maxWarpsPerSm = grGetInfoParams.grInfoList[1].data;
    uint32_t litterNumSmPerTpc = grGetInfoParams.grInfoList[2].data;
@@ -290,7 +356,7 @@ nvkmd_nvrm_create_pdev(struct vk_object_base *log_obj,
    uint32_t gpcCount = 0;
    uint32_t tpcCount = 0;
    NV2080_CTRL_GR_GET_GPC_MASK_PARAMS gpcMaskParams = {};
-   nvRmApiControl(&rm, pdev->hSubdevice, NV2080_CTRL_CMD_GR_GET_GPC_MASK, &gpcMaskParams, sizeof(gpcMaskParams));
+   NV_CHECK(nvRmApiControl(&rm, pdev->hSubdevice, NV2080_CTRL_CMD_GR_GET_GPC_MASK, &gpcMaskParams, sizeof(gpcMaskParams)));
 	for (uint32_t gpcId = 0; gpcId < 32; gpcId++) {
 		if ((1U << gpcId) & gpcMaskParams.gpcMask) {
 			gpcCount++;
@@ -307,7 +373,7 @@ nvkmd_nvrm_create_pdev(struct vk_object_base *log_obj,
 			{.index = NV2080_CTRL_FB_INFO_INDEX_BAR1_SIZE},
 		},
 	};
-   nvRmApiControl(&rm, pdev->hSubdevice, NV2080_CTRL_CMD_FB_GET_INFO_V2, &fbGetInfoParams, sizeof(fbGetInfoParams));
+   NV_CHECK(nvRmApiControl(&rm, pdev->hSubdevice, NV2080_CTRL_CMD_FB_GET_INFO_V2, &fbGetInfoParams, sizeof(fbGetInfoParams)));
 	uint64_t vramSize = fbGetInfoParams.fbInfoList[0].data * (uint64_t)1024;
 	uint64_t bar1Size = fbGetInfoParams.fbInfoList[1].data * (uint64_t)1024;
 
@@ -315,7 +381,6 @@ nvkmd_nvrm_create_pdev(struct vk_object_base *log_obj,
     .type = NV_DEVICE_TYPE_DIS,
     .device_id = ci->pci_info.device_id,
     .chipset = archInfoParams.architecture | archInfoParams.implementation,
-    .chipset_name = "TU117", // TODO
     .pci = {
         .domain = ci->pci_info.domain,
         .bus = ci->pci_info.bus,
@@ -339,6 +404,8 @@ nvkmd_nvrm_create_pdev(struct vk_object_base *log_obj,
 
    // TODO: bounds check
    strcpy(pdev->base.dev_info.device_name, getNameParams.gpuNameString.ascii);
+   strcpy(pdev->base.dev_info.chipset_name, nvkmd_nvrm_get_chipset_name(pdev->base.dev_info.chipset));
+
 
    pdev->base.kmd_info = (struct nvkmd_info) {
    	.has_get_vram_used = true,
@@ -348,12 +415,12 @@ nvkmd_nvrm_create_pdev(struct vk_object_base *log_obj,
    pdev->channelClass = nvkmd_nvrm_pdev_find_supported_class(pdev, ARRAY_SIZE(sChannelClasses), sChannelClasses);
    uint32_t usermodeClass = nvkmd_nvrm_pdev_find_supported_class(pdev, ARRAY_SIZE(sUsermodeClasses), sUsermodeClasses);
 
-   nvRmApiAlloc(&rm, pdev->hSubdevice, &pdev->hUsermode, usermodeClass, NULL);
-   nvRmApiMapMemory(&devRm, pdev->hSubdevice, pdev->hUsermode, 0, 4096, 0, &pdev->usermodeMap);
+   NV_CHECK(nvRmApiAlloc(&rm, pdev->hSubdevice, &pdev->hUsermode, usermodeClass, NULL));
+   NV_CHECK(nvRmApiMapMemory(&devRm, pdev->hSubdevice, pdev->hUsermode, 0, 4096, 0, &pdev->usermodeMap));
    NV_VASPACE_ALLOCATION_PARAMETERS vaSpaceParams = {
       .flags = NV_VASPACE_ALLOCATION_FLAGS_RETRY_PTE_ALLOC_IN_SYS,
    };
-   nvRmApiAlloc(&rm, pdev->hDevice, &pdev->hVaSpace, FERMI_VASPACE_A, &vaSpaceParams);
+   NV_CHECK(nvRmApiAlloc(&rm, pdev->hDevice, &pdev->hVaSpace, FERMI_VASPACE_A, &vaSpaceParams));
 
 
    /* Nouveau uses the OS page size for all pages, regardless of whether they
@@ -372,6 +439,10 @@ nvkmd_nvrm_create_pdev(struct vk_object_base *log_obj,
    *pdev_out = &pdev->base;
 
    return VK_SUCCESS;
+
+error:
+	nvkmd_pdev_destroy(&pdev->base);
+	return vkRes;
 }
 
 VkResult
@@ -405,15 +476,19 @@ nvkmd_nvrm_enum_pdev(struct vk_object_base *log_obj,
 	   struct nvkmd_pdev *pdev = NULL;
 	   result = nvkmd_nvrm_create_pdev(log_obj, debug_flags, &cardInfos[i], &pdev);
 	   /* Incompatible device, skip. */
-	   if (result == VK_ERROR_INCOMPATIBLE_DRIVER)
+	   if (result == VK_ERROR_INCOMPATIBLE_DRIVER) {
 	   	result = VK_SUCCESS;
+	   	continue;
+	   }
 
 	   if (result != VK_SUCCESS)
 	   	goto done;
 
 	   result = visitor(pdev, arg);
-	   if (result == VK_ERROR_INCOMPATIBLE_DRIVER)
+	   if (result == VK_ERROR_INCOMPATIBLE_DRIVER) {
 	   	result = VK_SUCCESS;
+	   	continue;
+	   }
 
 	   if (result != VK_SUCCESS)
 	   	goto done;
@@ -429,14 +504,16 @@ nvkmd_nvrm_pdev_destroy(struct nvkmd_pdev *_pdev)
 {
    struct nvkmd_nvrm_pdev *pdev = nvkmd_nvrm_pdev(_pdev);
 
-   struct NvRmApi rm;
-   nvkmd_nvrm_dev_api_ctl(pdev, &rm);
+   if (pdev->ctlFd >= 0 && pdev->hClient != 0) {
+	   struct NvRmApi rm;
+	   nvkmd_nvrm_dev_api_ctl(pdev, &rm);
 
-   nvRmApiFree(&rm, pdev->hVaSpace);
-   nvRmApiUnmapMemory(&rm, pdev->hSubdevice, pdev->hUsermode, 0, &pdev->usermodeMap);
-   nvRmApiFree(&rm, pdev->hUsermode);
-   nvRmApiFree(&rm, pdev->hSubdevice);
-   nvRmApiFree(&rm, pdev->hDevice);
+	   nvRmApiFree(&rm, pdev->hVaSpace);
+	   nvRmApiUnmapMemory(&rm, pdev->hSubdevice, pdev->hUsermode, 0, &pdev->usermodeMap);
+	   nvRmApiFree(&rm, pdev->hUsermode);
+	   nvRmApiFree(&rm, pdev->hSubdevice);
+	   nvRmApiFree(&rm, pdev->hDevice);
+   }
 
    free(pdev->classList);
 
