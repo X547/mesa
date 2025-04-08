@@ -57,6 +57,7 @@ NV_STATUS nvRmSemSurfCreate(struct nvkmd_nvrm_dev *dev, NvU64 size, struct NvRmS
       return NV_ERR_NO_MEMORY;
 
    semSurf->dev = dev;
+   semSurf->refCount = 1;
    VkResult vkRes = nvkmd_dev_alloc_mapped_mem(&dev->base, NULL, size, 4096, NVKMD_MEM_GART, NVKMD_MEM_MAP_RDWR, &semSurf->memory);
    if (vkRes != VK_SUCCESS) {
       nvRmSemSurfDestroy(semSurf);
@@ -66,8 +67,10 @@ NV_STATUS nvRmSemSurfCreate(struct nvkmd_nvrm_dev *dev, NvU64 size, struct NvRmS
    NvHandle hMemoryPhys = nvkmd_nvrm_mem(semSurf->memory)->hMemoryPhys;
    NV_SEMAPHORE_SURFACE_ALLOC_PARAMETERS semSurfParams = {
       .hSemaphoreMem = hMemoryPhys,
-      .hMaxSubmittedMem = hMemoryPhys,
    };
+   if (!(pdev->semSurfLayout.caps & NV2080_CTRL_FB_GET_SEMAPHORE_SURFACE_LAYOUT_CAPS_64BIT_SEMAPHORES_SUPPORTED)) {
+   	semSurfParams.hMaxSubmittedMem = hMemoryPhys;
+   }
    NV_STATUS nvRes = nvRmApiAlloc(&rm, pdev->hSubdevice, &semSurf->hSemSurf, NV_SEMAPHORE_SURFACE, &semSurfParams);
    if (nvRes != NV_OK) {
       nvRmSemSurfDestroy(semSurf);
@@ -78,8 +81,22 @@ NV_STATUS nvRmSemSurfCreate(struct nvkmd_nvrm_dev *dev, NvU64 size, struct NvRmS
    return NV_OK;
 }
 
+NV_STATUS nvRmSemSurfImport(struct nvkmd_nvrm_dev *dev, NvHandle hSemSurf, struct NvRmSemSurf **semSurfOut)
+{
+   // TODO: implement
+   return NV_ERR_GENERIC;
+}
+
+void nvRmSemSurfReference(struct NvRmSemSurf *semSurf)
+{
+	p_atomic_inc_return(&semSurf->refCount);
+}
+
 void nvRmSemSurfDestroy(struct NvRmSemSurf *semSurf)
 {
+   if (semSurf == NULL || p_atomic_dec_return(&semSurf->refCount) > 0)
+      return;
+
    struct nvkmd_nvrm_pdev *pdev = nvkmd_nvrm_pdev(semSurf->dev->base.pdev);
    struct NvRmApi rm;
    nvkmd_nvrm_dev_api_ctl(pdev, &rm);
@@ -200,4 +217,45 @@ NV_STATUS nvRmSemSurfSetValue(struct NvRmSemSurf *semSurf, NvU64 index, NvU64 ne
       .newValue = newValue,
    };
    return nvRmApiControl(&rm, semSurf->hSemSurf, NV_SEMAPHORE_SURFACE_CTRL_CMD_SET_VALUE, &params, sizeof(params));
+}
+
+NvU64 *
+nvRmSemSurfTimestamp(struct NvRmSemSurf *semSurf, NvU64 index)
+{
+   struct nvkmd_nvrm_pdev *pdev = nvkmd_nvrm_pdev(semSurf->dev->base.pdev);
+	const NV2080_CTRL_FB_GET_SEMAPHORE_SURFACE_LAYOUT_PARAMS *layout = &pdev->semSurfLayout;
+
+   void *pSem = semSurf->memory->map;
+	return (NvU64*)((uint8_t*)pSem + index * layout->size + 8);
+}
+
+NvU64 *
+nvRmSemSurfMaxSubmittedValue(struct NvRmSemSurf *semSurf, NvU64 index)
+{
+   struct nvkmd_nvrm_pdev *pdev = nvkmd_nvrm_pdev(semSurf->dev->base.pdev);
+	const NV2080_CTRL_FB_GET_SEMAPHORE_SURFACE_LAYOUT_PARAMS *layout = &pdev->semSurfLayout;
+
+   void *pSem = semSurf->memory->map;
+	return (NvU64*)((uint8_t*)pSem + index * layout->size + layout->maxSubmittedSemaphoreValueOffset);
+}
+
+NvU64 *
+nvRmSemSurfMonitoredValue(struct NvRmSemSurf *semSurf, NvU64 index)
+{
+   struct nvkmd_nvrm_pdev *pdev = nvkmd_nvrm_pdev(semSurf->dev->base.pdev);
+	const NV2080_CTRL_FB_GET_SEMAPHORE_SURFACE_LAYOUT_PARAMS *layout = &pdev->semSurfLayout;
+
+   void *pSem = semSurf->memory->map;
+	return (NvU64*)((uint8_t*)pSem + index * layout->size + layout->monitoredFenceThresholdOffset);
+}
+
+void
+nvRmSemSurfReset(struct NvRmSemSurf *semSurf, NvU64 index)
+{
+   struct nvkmd_nvrm_pdev *pdev = nvkmd_nvrm_pdev(semSurf->dev->base.pdev);
+	const NV2080_CTRL_FB_GET_SEMAPHORE_SURFACE_LAYOUT_PARAMS *layout = &pdev->semSurfLayout;
+
+   void *pSem = semSurf->memory->map;
+
+   memset((uint8_t*)pSem + index * layout->size, 0, layout->size);
 }
