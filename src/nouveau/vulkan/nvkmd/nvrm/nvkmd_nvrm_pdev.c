@@ -216,52 +216,6 @@ nvkmd_nvrm_pdev_find_supported_class(struct nvkmd_nvrm_pdev *pdev, uint32_t numC
 	return 0;
 }
 
-static const char*
-nvkmd_nvrm_get_chipset_name(uint32_t chipset)
-{
-	switch (chipset) {
-		case 0x160: return "TU100";
-		case 0x162: return "TU102";
-		case 0x164: return "TU104";
-		case 0x166: return "TU106";
-		case 0x168: return "TU116";
-		case 0x167: return "TU117";
-
-		case 0x170: return "GA100";
-		case 0x172: return "GA102";
-		case 0x173: return "GA103";
-		case 0x174: return "GA104";
-		case 0x176: return "GA106";
-		case 0x177: return "GA107";
-		case 0x17B: return "GA10B";
-
-		case 0x180: return "GH100";
-		case 0x181: return "GH100_SOC";
-
-		case 0x190: return "AD100";
-		case 0x191: return "AD101";
-		case 0x192: return "AD102";
-		case 0x193: return "AD103";
-		case 0x194: return "AD104";
-		case 0x196: return "AD106";
-		case 0x197: return "AD107";
-		case 0x19B: return "AD10B";
-
-		case 0x1A0: return "GB100";
-		case 0x1A2: return "GB102";
-
-		case 0x1B0: return "GB200";
-		case 0x1B2: return "GB202";
-		case 0x1B3: return "GB203";
-		case 0x1B4: return "GB204";
-		case 0x1B5: return "GB205";
-		case 0x1B6: return "GB206";
-		case 0x1B7: return "GB207";
-
-		default: return "?";
-	}
-}
-
 
 #define NV_CHECK(nvRes) {NV_STATUS _nvRes = nvRes; if (_nvRes != NV_OK) {vkRes = vk_error(log_obj, VK_ERROR_UNKNOWN); goto error;}}
 
@@ -327,6 +281,8 @@ nvkmd_nvrm_create_pdev(struct vk_object_base *log_obj,
       .gpuNameStringFlags = NV2080_CTRL_GPU_GET_NAME_STRING_FLAGS_TYPE_ASCII,
    };
    NV_CHECK(nvRmApiControl(&rm, pdev->hSubdevice, NV2080_CTRL_CMD_GPU_GET_NAME_STRING, &getNameParams, sizeof(getNameParams)));
+   NV2080_CTRL_GPU_GET_SHORT_NAME_STRING_PARAMS getShortNameParams = {};
+   NV_CHECK(nvRmApiControl(&rm, pdev->hSubdevice, NV2080_CTRL_CMD_GPU_GET_SHORT_NAME_STRING, &getShortNameParams, sizeof(getShortNameParams)));
 
    NV0080_CTRL_GPU_GET_CLASSLIST_V2_PARAMS classListParams = {};
    NV_CHECK(nvRmApiControl(&rm, pdev->hDevice, NV0080_CTRL_CMD_GPU_GET_CLASSLIST_V2, &classListParams, sizeof(classListParams)));
@@ -404,7 +360,7 @@ nvkmd_nvrm_create_pdev(struct vk_object_base *log_obj,
 
    // TODO: bounds check
    strcpy(pdev->base.dev_info.device_name, getNameParams.gpuNameString.ascii);
-   strcpy(pdev->base.dev_info.chipset_name, nvkmd_nvrm_get_chipset_name(pdev->base.dev_info.chipset));
+   strcpy(pdev->base.dev_info.chipset_name, getShortNameParams.gpuShortNameString);
 
 
    pdev->base.kmd_info = (struct nvkmd_info) {
