@@ -239,22 +239,21 @@ nvkmd_nvrm_create_pdev(struct vk_object_base *log_obj,
    pdev->ctlFd = -1;
    pdev->devFd = -1;
 
-   asprintf(&pdev->devName, "/dev/nvidia%u", ci->minor_number);
+   asprintf(&pdev->devName, NVRM_ACTUAL_NODE_NAME, ci->minor_number);
    if (pdev->devName == NULL) {
       vkRes = vk_error(log_obj, VK_ERROR_OUT_OF_HOST_MEMORY);
    	goto error;
    }
 
-   pdev->ctlFd = open("/dev/nvidiactl", O_RDWR | O_CLOEXEC);
+   pdev->ctlFd = open(NVRM_CTL_NODE_NAME, O_RDWR | O_CLOEXEC);
    pdev->devFd = open(pdev->devName, O_RDWR | O_CLOEXEC);
 
-   struct NvRmApi rm, devRm;
+   struct NvRmApi rm;
    memset(&rm, 0, sizeof(rm));
    rm.fd = pdev->ctlFd;
 
    NV_CHECK(nvRmApiAlloc(&rm, 0, &pdev->hClient, NV01_ROOT_CLIENT, NULL));
    nvkmd_nvrm_dev_api_ctl(pdev, &rm);
-   nvkmd_nvrm_dev_api_dev(pdev, &devRm);
 
    NV0000_CTRL_GPU_GET_ID_INFO_V2_PARAMS idInfoParams = {
    	.gpuId = ci->gpu_id,
@@ -372,7 +371,7 @@ nvkmd_nvrm_create_pdev(struct vk_object_base *log_obj,
    uint32_t usermodeClass = nvkmd_nvrm_pdev_find_supported_class(pdev, ARRAY_SIZE(sUsermodeClasses), sUsermodeClasses);
 
    NV_CHECK(nvRmApiAlloc(&rm, pdev->hSubdevice, &pdev->hUsermode, usermodeClass, NULL));
-   NV_CHECK(nvRmApiMapMemory(&devRm, pdev->hSubdevice, pdev->hUsermode, 0, 4096, 0, &pdev->usermodeMap));
+   NV_CHECK(nvRmApiMapMemory(&rm, pdev->hSubdevice, pdev->hUsermode, 0, 4096, false, 0, &pdev->usermodeMap));
    NV_VASPACE_ALLOCATION_PARAMETERS vaSpaceParams = {
       .flags = NV_VASPACE_ALLOCATION_FLAGS_RETRY_PTE_ALLOC_IN_SYS,
    };
@@ -409,7 +408,7 @@ nvkmd_nvrm_enum_pdev(struct vk_object_base *log_obj,
 {
    VkResult result = VK_SUCCESS;
 
-   int ctlFd = open("/dev/nvidiactl", O_RDWR | O_CLOEXEC);
+   int ctlFd = open(NVRM_CTL_NODE_NAME, O_RDWR | O_CLOEXEC);
    if (ctlFd < 0)
    	return VK_SUCCESS; // No NVRM driver loaded, so no Nvidia devices.
 

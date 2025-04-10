@@ -160,7 +160,7 @@ nvkmd_nvrm_mem_free(struct nvkmd_mem *_mem)
    struct nvkmd_nvrm_pdev *pdev = nvkmd_nvrm_pdev(dev->base.pdev);
 
    struct NvRmApi rm;
-   nvkmd_nvrm_dev_api_dev(pdev, &rm);
+   nvkmd_nvrm_dev_api_ctl(pdev, &rm);
 
    nvkmd_va_free(mem->base.va);
    nvRmApiFree(&rm, mem->hMemoryPhys);
@@ -179,17 +179,13 @@ nvkmd_nvrm_mem_map(struct nvkmd_mem *_mem,
    struct nvkmd_nvrm_pdev *pdev = nvkmd_nvrm_pdev(dev->base.pdev);
 
    struct NvRmApi rm;
-   if (mem->isSystemMem) {
-      nvkmd_nvrm_dev_api_ctl(pdev, &rm);
-   } else {
-      nvkmd_nvrm_dev_api_dev(pdev, &rm);
-   }
+   nvkmd_nvrm_dev_api_ctl(pdev, &rm);
 
    NvRmApiMapping *mapping = CALLOC_STRUCT(NvRmApiMapping);
    if (mapping == NULL)
       return vk_error(log_obj, VK_ERROR_OUT_OF_HOST_MEMORY);
 
-   NV_STATUS nvRes = nvRmApiMapMemory(&rm, pdev->hSubdevice, mem->hMemoryPhys, 0, mem->base.size_B, 0, mapping);
+   NV_STATUS nvRes = nvRmApiMapMemory(&rm, pdev->hSubdevice, mem->hMemoryPhys, 0, mem->base.size_B, mem->isSystemMem, 0, mapping);
    if (nvRes != NV_OK) {
       fprintf(stderr, "[!] nvRes: %#x\n", nvRes);
       free(mapping);
@@ -216,11 +212,7 @@ nvkmd_nvrm_mem_unmap(struct nvkmd_mem *_mem,
    struct nvkmd_nvrm_pdev *pdev = nvkmd_nvrm_pdev(dev->base.pdev);
 
    struct NvRmApi rm;
-   if (mem->isSystemMem) {
-      nvkmd_nvrm_dev_api_ctl(pdev, &rm);
-   } else {
-      nvkmd_nvrm_dev_api_dev(pdev, &rm);
-   }
+   nvkmd_nvrm_dev_api_ctl(pdev, &rm);
 
    struct hash_entry *ent = _mesa_hash_table_search(dev->mappings, map);
    if (ent == NULL) {
