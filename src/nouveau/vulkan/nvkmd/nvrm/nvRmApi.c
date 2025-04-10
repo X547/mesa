@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 #include <errno.h>
+#include <string.h>
 #ifdef __HAIKU__
 #include <sys/ioccom.h>
 #endif
@@ -117,10 +118,17 @@ NvU32 nvRmApiUnmapMemoryDma(NvRmApi *api, NvU32 hDevice, NvU32 hDma, NvU32 hMemo
 	return p.status;
 }
 
-NvU32 nvRmApiMapMemory(NvRmApi *api, NvU32 hDevice, NvU32 hMemory, NvU64 offset, NvU64 length, NvU32 flags, NvRmApiMapping *mapping)
+NvU32 nvRmApiMapMemory(NvRmApi *api, NvU32 hDevice, NvU32 hMemory, NvU64 offset, NvU64 length, bool isSysMem, NvU32 flags, NvRmApiMapping *mapping)
 {
+	const char *nodeName;
+	if (isSysMem) {
+		nodeName = NVRM_CTL_NODE_NAME;
+	} else {
+		nodeName = api->nodeName;
+	}
+
 	mapping->address = NULL;
-	int memFd = open(api->nodeName, O_RDWR | O_CLOEXEC);
+	int memFd = open(nodeName, O_RDWR | O_CLOEXEC);
 	if (memFd < 0) {
 		return NV_ERR_GENERIC;
 	}
@@ -149,10 +157,15 @@ NvU32 nvRmApiMapMemory(NvRmApi *api, NvU32 hDevice, NvU32 hMemory, NvU64 offset,
 
 #ifdef __HAIKU__
 	nv_haiku_map_params mapParams = {
-		.name = "NVRM",
 		.addressSpec = B_ANY_ADDRESS,
-		.protection = B_READ_AREA | B_WRITE_AREA | B_CLONEABLE_AREA,
+		.protection = B_READ_AREA | B_WRITE_AREA,
 	};
+	if (isSysMem) {
+		strcpy(mapParams.name, "NVRM sysmem");
+		mapParams.protection |= B_CLONEABLE_AREA;
+	} else {
+		strcpy(mapParams.name, "NVRM vidmem");
+	}
 	ret = nvRmIoctl(memFd, NV_HAIKU_MAP, &mapParams, sizeof(mapParams));
 	if (ret < 0) {
 		p.params.status = NV_ERR_GENERIC;

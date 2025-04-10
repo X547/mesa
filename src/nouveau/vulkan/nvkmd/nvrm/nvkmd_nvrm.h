@@ -175,19 +175,11 @@ nvkmd_nvrm_sync_get_type(struct nvkmd_nvrm_pdev *pdev);
 
 
 static inline void
-nvkmd_nvrm_dev_api_dev(struct nvkmd_nvrm_pdev *pdev, struct NvRmApi *rm)
-{
-   rm->fd = pdev->ctlFd;
-   rm->hClient = pdev->hClient;
-   rm->nodeName = pdev->devName;
-}
-
-static inline void
 nvkmd_nvrm_dev_api_ctl(struct nvkmd_nvrm_pdev *pdev, struct NvRmApi *rm)
 {
    rm->fd = pdev->ctlFd;
    rm->hClient = pdev->hClient;
-   rm->nodeName = "/dev/nvidiactl";
+   rm->nodeName = pdev->devName;
 }
 
 #endif /* NVKMD_DRM_H */
