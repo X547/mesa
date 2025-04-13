@@ -14,14 +14,13 @@
 #include "util/u_memory.h"
 #include "nv_push_clc36f.h"
 
-#include "nvRmSemSurf.h"
-
 #include "class/cl0002.h" // NV01_CONTEXT_DMA
 #include "class/clc361.h" // NVC361_NOTIFY_CHANNEL_PENDING
 #include "class/clc46f.h" // TURING_CHANNEL_GPFIFO_A
 #include "class/cl2080_notification.h" // NV2080_ENGINE_TYPE_GRAPHICS
 #include "class/clc36f.h" // VOLTA_CHANNEL_GPFIFO_A
 #include "class/cla16f.h" // KeplerBControlGPFifo
+#include "class/cl0005.h" // NV01_EVENT
 #include "ctrl/ctrla06f/ctrla06fgpfifo.h" // NVA06F_CTRL_CMD_BIND
 #include "ctrl/ctrlc36f.h" // NVC36F_CTRL_CMD_INTERNAL_GPFIFO_GET_WORK_SUBMIT_TOKEN
 
@@ -107,6 +106,7 @@ nvkmd_nvrm_create_exec_ctx(struct nvkmd_dev *_dev,
    VK_CHECK(nvkmd_dev_alloc_mapped_mem(_dev, log_obj, 0x80000, 0x10000, NVKMD_MEM_LOCAL, NVKMD_MEM_MAP_RDWR, &ctx->userD));
    VK_CHECK(nvkmd_dev_alloc_mapped_mem(_dev, log_obj, 0x40000,  0x1000, NVKMD_MEM_GART, NVKMD_MEM_MAP_RDWR,  &ctx->gpFifo));
    VK_CHECK(nvkmd_dev_alloc_mapped_mem(_dev, log_obj, 0x10000,  0x1000, NVKMD_MEM_GART, NVKMD_MEM_MAP_RDWR,  &ctx->cmdBuf));
+   VK_CHECK(nvkmd_dev_alloc_mapped_mem(_dev, log_obj,  0x1000,  0x1000, NVKMD_MEM_GART, NVKMD_MEM_MAP_RDWR,  &ctx->sem));
 
 	NV_CONTEXT_DMA_ALLOCATION_PARAMS ctxDmaParams = {
 		.flags =
@@ -171,10 +171,19 @@ nvkmd_nvrm_create_exec_ctx(struct nvkmd_dev *_dev,
    rmOsEvent.fd = ctx->osEvent;
    NV_CHECK(nvRmApiAllocOsEvent(&rmOsEvent, ctx->osEvent));
 
-   NV_CHECK(nvRmSemSurfCreate(dev, 0x1000, &ctx->semSurf));
-
-	NvU32 notifyIndices[] = {12};
-	NV_CHECK(nvRmSemSurfBindChannel(ctx->semSurf, ctx->hChannel, 1, notifyIndices));
+	NV0005_ALLOC_PARAMETERS eventParams = {
+		.hParentClient = pdev->hClient,
+		.hSrcResource = pdev->hSubdevice,
+		.hClass = NV01_EVENT_OS_EVENT,
+		.notifyIndex =
+			NV2080_NOTIFIERS_GRAPHICS |
+			NV01_EVENT_NONSTALL_INTR |
+			NV01_EVENT_WITHOUT_EVENT_DATA |
+			NV01_EVENT_SUBDEVICE_SPECIFIC |
+			DRF_NUM(0005, _NOTIFY_INDEX, _SUBDEVICE, 0),
+		.data = (NvP64)(uintptr_t)ctx->osEvent,
+	};
+   NV_CHECK(nvRmApiAlloc(&rm, pdev->hSubdevice, &ctx->hEvent, NV01_EVENT_OS_EVENT, &eventParams));
 
    nv_push_init(&ctx->push, ctx->cmdBuf->map, 0x10000 / 4);
 
@@ -195,8 +204,7 @@ nvkmd_nvrm_exec_ctx_destroy(struct nvkmd_ctx *_ctx)
    struct NvRmApi rm;
    nvkmd_nvrm_dev_api_ctl(pdev, &rm);
 
-   if (ctx->semSurf != NULL)
-      nvRmSemSurfDestroy(ctx->semSurf);
+   nvRmApiFree(&rm, ctx->hEvent);
    if (ctx->osEvent >= 0)
       close(ctx->osEvent);
    nvRmApiFree(&rm, ctx->subchannels.hCopy);
@@ -206,6 +214,8 @@ nvkmd_nvrm_exec_ctx_destroy(struct nvkmd_ctx *_ctx)
    nvRmApiFree(&rm, ctx->subchannels.hCompute);
    nvRmApiFree(&rm, ctx->hChannel);
    nvRmApiFree(&rm, ctx->hCtxDma);
+   if (ctx->sem != NULL)
+      nvkmd_mem_unref(ctx->sem);
    if (ctx->cmdBuf != NULL)
       nvkmd_mem_unref(ctx->cmdBuf);
    if (ctx->gpFifo != NULL)
@@ -242,18 +252,10 @@ nvkmd_nvrm_exec_ctx_flush(struct nvkmd_ctx *_ctx,
    NvNotification *notifiers = ctx->notifier->map;
    NvNotification *submitTokenNotifier = &notifiers[NV_CHANNELGPFIFO_NOTIFICATION_TYPE_WORK_SUBMIT_TOKEN];
    KeplerBControlGPFifo *userD = ctx->userD->map;
-   uint64_t *maxSubmitted = nvRmSemSurfMaxSubmittedValue(ctx->semSurf, 0);
+   uint64_t *semAdr = (uint64_t*)ctx->sem->map;
+   uint64_t semAdrGpu = ctx->sem->va->addr;
 
    ctx->wSeq++;
-   *maxSubmitted = ctx->wSeq;
-
-   NV_STATUS nvRes = nvRmSemSurfRegisterWaiter(ctx->semSurf, 0, ctx->wSeq, 0, ctx->osEvent);
-   if (nvRes != NV_OK) {
-      fprintf(stderr, "[!] nvRes: %#x\n", nvRes);
-      return VK_ERROR_UNKNOWN;
-   }
-
-   uint64_t semAdrGpu = ctx->semSurf->memory->va->addr;
 
    write_semaphore_release(&ctx->push, semAdrGpu, ctx->wSeq, true);
 
@@ -270,7 +272,7 @@ nvkmd_nvrm_exec_ctx_flush(struct nvkmd_ctx *_ctx,
    *doorbell = submitTokenNotifier->info32;
 
    for (;;) {
-      uint64_t rSeq = nvRmSemSurfGetValue(ctx->semSurf, 0);
+      uint64_t rSeq = *semAdr;
       if (rSeq == ctx->wSeq) {
          break;
       }

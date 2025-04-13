@@ -114,6 +114,7 @@ struct nvkmd_nvrm_exec_ctx {
    struct nvkmd_mem *userD;
    struct nvkmd_mem *gpFifo;
    struct nvkmd_mem *cmdBuf;
+   struct nvkmd_mem *sem;
    NvHandle hCtxDma;
    NvHandle hChannel;
    struct {
@@ -124,7 +125,7 @@ struct nvkmd_nvrm_exec_ctx {
 	   NvHandle hCompute;
    } subchannels;
    int osEvent;
-   struct NvRmSemSurf *semSurf;
+   NvHandle hEvent;
    uint64_t wSeq;
    uint64_t gpGet;
    uint64_t gpPut;
