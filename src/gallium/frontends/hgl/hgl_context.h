@@ -37,11 +37,6 @@ extern "C" {
 #endif
 
 
-#define CONTEXT_MAX 32
-
-typedef int64 context_id;
-
-
 struct hgl_buffer
 {
 	struct pipe_frontend_drawable base;
