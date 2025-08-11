@@ -147,7 +147,7 @@ VkResult nvkmd_nvrm_create_ctx(struct nvkmd_dev *dev,
 
 struct nvkmd_nvrm_sync {
    struct vk_sync base;
-   struct NvRmSemSurf *semSurf;
+   struct nvkmd_mem *sem;
    uint64_t index;
    uint64_t value;
 };

@@ -101,6 +101,10 @@ nvkmd_nvrm_alloc_tiled_mem(struct nvkmd_dev *_dev,
       flags &= ~(NVKMD_MEM_LOCAL | NVKMD_MEM_VRAM);
       flags |= NVKMD_MEM_GART;
    }
+   if (flags & NVKMD_MEM_CAN_MAP) {
+      flags &= ~(NVKMD_MEM_LOCAL | NVKMD_MEM_VRAM);
+      flags |= NVKMD_MEM_GART;
+   }
 
    const uint32_t mem_align_B = _dev->pdev->bind_align_B;
    size_B = align64(size_B, mem_align_B);
@@ -136,7 +140,7 @@ nvkmd_nvrm_alloc_tiled_mem(struct nvkmd_dev *_dev,
    NV_STATUS nvRes = nvRmApiAlloc(&rm, pdev->hDevice, &hMemoryPhys, hClass, &params);
    if (nvRes != NV_OK) {
       fprintf(stderr, "[!] nvRes: %#x\n", nvRes);
-      return VK_ERROR_UNKNOWN;
+      return VK_ERROR_OUT_OF_DEVICE_MEMORY;
    }
 
    return create_mem_or_close_bo(dev, log_obj, flags, hMemoryPhys, size_B,
@@ -189,7 +193,7 @@ nvkmd_nvrm_mem_map(struct nvkmd_mem *_mem,
    if (nvRes != NV_OK) {
       fprintf(stderr, "[!] nvRes: %#x\n", nvRes);
       free(mapping);
-      return VK_ERROR_UNKNOWN;
+      return vk_error(log_obj, VK_ERROR_OUT_OF_DEVICE_MEMORY);
    }
 
    if (_mesa_hash_table_insert(dev->mappings, mapping->address, mapping) == NULL) {
@@ -237,7 +241,7 @@ nvkmd_nvrm_mem_overmap(struct nvkmd_mem *_mem,
 {
    struct nvkmd_nvrm_mem *mem = nvkmd_nvrm_mem(_mem);
 
-   fprintf(stderr, "nvkmd_nvrm_mem_unmap(%#x)\n", mem->hMemoryPhys);
+   fprintf(stderr, "nvkmd_nvrm_mem_overmap(%#x)\n", mem->hMemoryPhys);
 
    return VK_ERROR_UNKNOWN;
 }

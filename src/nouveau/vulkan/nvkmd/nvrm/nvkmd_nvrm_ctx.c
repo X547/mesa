@@ -185,7 +185,7 @@ nvkmd_nvrm_create_exec_ctx(struct nvkmd_dev *_dev,
 	};
    NV_CHECK(nvRmApiAlloc(&rm, pdev->hSubdevice, &ctx->hEvent, NV01_EVENT_OS_EVENT, &eventParams));
 
-   nv_push_init(&ctx->push, ctx->cmdBuf->map, 0x10000 / 4);
+   nv_push_init(&ctx->push, ctx->cmdBuf->map, 0x10000 / 4, BITFIELD_BIT(SUBC_NV9097));
 
    *ctx_out = &ctx->base;
    return VK_SUCCESS;
@@ -292,7 +292,7 @@ nvkmd_nvrm_exec_ctx_flush(struct nvkmd_ctx *_ctx,
    }
 
    ctx->gpGet = ctx->gpPut;
-   nv_push_init(&ctx->push, ctx->cmdBuf->map, 0x10000 / 4);
+   nv_push_init(&ctx->push, ctx->cmdBuf->map, 0x10000 / 4, BITFIELD_BIT(SUBC_NV9097));
 
    return VK_SUCCESS;
 }
